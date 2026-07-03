@@ -1,7 +1,20 @@
-"""手工构造最小合法 PDF（Type1 Helvetica，仅支持 latin 文本），测试解析不依赖真实条款。"""
+"""手工构造最小合法 PDF（Type1 Helvetica，仅支持 latin 文本），测试解析不依赖真实条款。
+
+每页入参可以是 str（单文本，画在 (72, 720)），
+也可以是 list[tuple[x, y, text]]（定位文本，用于模拟双栏等版面）。
+"""
+
+PageSpec = str | list[tuple[float, float, str]]
 
 
-def make_pdf(*page_texts: str) -> bytes:
+def make_pdf(*page_specs: PageSpec) -> bytes:
+    page_texts: list[list[tuple[float, float, str]]] = [
+        [(72.0, 720.0, spec)] if isinstance(spec, str) else list(spec) for spec in page_specs
+    ]
+    return _build(page_texts)
+
+
+def _build(page_texts: list[list[tuple[float, float, str]]]) -> bytes:
     page_count = len(page_texts)
     objs: list[bytes] = []
     # 1: catalog, 2: pages
@@ -18,8 +31,9 @@ def make_pdf(*page_texts: str) -> bytes:
                 f"/Resources << /Font << /F1 {font_obj_no} 0 R >> >> >>"
             ).encode()
         )
-    for text in page_texts:
-        stream = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode()
+    for items in page_texts:
+        ops = "".join(f"BT /F1 12 Tf {x} {y} Td ({text}) Tj ET " for x, y, text in items)
+        stream = ops.encode()
         objs.append(
             b"<< /Length "
             + str(len(stream)).encode()

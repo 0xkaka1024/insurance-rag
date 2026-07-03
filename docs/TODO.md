@@ -33,7 +33,7 @@
 
 ## D2：切片对比 + 混合检索
 
-- [ ] parser 双栏检测与分栏提取：简介类 PDF 两栏交错修复，真实 PDF 抽页人工校验
+- [x] parser 双栏检测与分栏提取：简介类 PDF 两栏交错修复，真实 PDF 抽页人工校验
 - [ ] StructuralChunker：层级感知（条款编号优先，简介类按章节标题），过长二次切分；元数据含 产品/层级/页码
 - [ ] 入库脚本支持双 collection 并行构建 + 文件 hash 幂等 + 白名单校验（training deck / 费率表文件代码级拒绝）
 - [ ] BM25 索引（jieba 分词）持久化；RRF 融合；/ask 支持 retrieval=vector|hybrid
