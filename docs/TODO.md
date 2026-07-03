@@ -1,6 +1,6 @@
 # TODO：执行计划与准备清单
 
-> 配合 SPEC.md 使用。每天结束对照「当日验收」打勾，落后一天以上按「降级预案」砍需求。
+> 配合 SPEC.md 使用。**每完成一项立即打勾，勾选状态与 git log 始终同步**；每天结束对照「当日验收」核验，落后一天以上按「降级预案」砍需求。
 
 ## Phase 0：开工前准备（半天，全部就绪再写代码）
 
@@ -56,7 +56,9 @@
 ## D5：评测集 + RAGAS
 
 - [ ] 以 eval/seed_questions.jsonl 为模板，LLM 从 chunk 批量生成候选题 → **人工逐条核对 ground_truth**（这步不能省，约半天）→ 定稿 dataset.jsonl（50 条：事实/跨段/表格/对比/拒答 五类 × 三档难度）
-- [ ] run_eval.py：8 配置 × 50 题 → RAGAS 四指标 + 拒答准确率 → results.json；前端评测表渲染
+- [ ] run_eval.py：缺省跑 8 配置 × 50 题 → RAGAS 四指标 + 拒答准确率 → 结果持久化；前端评测表渲染
+- [ ] 结果持久化（设计已定 2026-07-03）：每次运行输出 `eval/results/{YYYYMMDD}_{git短hash}.json`，内容含 config、RAGAS 四指标、拒答准确率、总成本与总耗时；`eval/results/` 目录**入 git**（.gitignore 已移除 eval/results.json 行）；前端评测表读取最新一份，并提供历史结果下拉对比
+- [ ] CLI 参数化（设计已定 2026-07-03）：`--chunking / --retrieval / --rerank / --llm` 指定单套配置（缺省 = 8 套全组合）；`--dataset` 指定题库文件（缺省 = eval/dataset.jsonl）；`--metrics` 支持只跑无需 ground_truth 的指标子集（faithfulness, answer_relevancy）
 - **当日验收**：评测表跑出完整数字，最优配置 faithfulness ≥ 0.85（低于则排查后再进 D6）
 
 ## D6：部署 + 展示物料

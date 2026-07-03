@@ -49,7 +49,7 @@
 | R3 | 混合检索 + 重排 | /ask 支持 vector/hybrid 切换与 rerank 开关；hybrid = 向量 + BM25 + RRF |
 | R4 | 引用与拒答 | 回答中每个事实论断带 [产品-条号-页码] 标注（无条号语料退化为 [产品-章节-页码]），前端可点开对应原文 chunk；检索分数低于阈值时输出拒答话术；保费类问题被路由拦截并说明 |
 | R5 | Playground 对照 | 前端可勾选 config，同一问题双配置左右对照，展示各自检索到的 chunk 与回答 |
-| R6 | 评测 | 50 条评测集（五类问题×三档难度）；run_eval.py 跑完 8 套配置输出 results.json；RAGAS 四指标 + 拒答准确率渲染成表 |
+| R6 | 评测 | 50 条评测集（五类问题×三档难度）；run_eval.py 支持 CLI 参数化：`--chunking/--retrieval/--rerank/--llm` 指定单套配置（缺省 8 套全组合）、`--dataset` 换题库、`--metrics` 只跑无需 ground_truth 的子集（faithfulness, answer_relevancy）；每次运行持久化 `eval/results/{日期}_{git短hash}.json`（config、RAGAS 四指标、拒答准确率、总成本与耗时），目录入 git；前端评测表读最新一份并支持历史对比下拉 |
 | R7 | 流式与部署 | /ask 支持 SSE 流式输出；Dockerfile 单容器；HF Spaces 线上可访问；`/health` 可用；结构化日志含 request_id 与阶段耗时；rerank 故障自动降级不中断服务 |
 
 ### P1（显著增强，时间允许即做）

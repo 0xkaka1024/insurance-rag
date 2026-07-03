@@ -13,8 +13,9 @@
 - 一个 feature = 一个 commit，代码与对应 pytest 单测同一个 commit 提交；commit message 用英文 Conventional Commits（feat/fix/docs/test/refactor/chore + 祈使句），一个 commit 只含一个主题的改动
 - 每次 commit 前必须本地通过：`ruff check . && pytest`
 - 单测中所有 LLM / embedding / rerank 外部调用一律 mock，测试不联网不花钱
-- RAGAS 评测（`python eval/run_eval.py`）只手动跑，不进 CI
+- RAGAS 评测（`python eval/run_eval.py`）只手动跑，不进 CI；评测结果持久化到 `eval/results/`（入 git）
 - 每个 commit 完成后及时 `git push`，GitHub 与本地保持同步
+- docs/TODO.md 勾选实时同步：每完成一项立即打勾，TODO 状态与 git log 始终一致
 
 ## 红线
 

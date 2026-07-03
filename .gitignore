@@ -3,6 +3,5 @@ data/
 __pycache__/
 *.pyc
 .venv/
-eval/results.json
 .DS_Store
 .claude/
