@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
 from app.core.llm import LLMClient
+from app.rag.preprocess import REFUSAL_PREMIUM, route
 from app.rag.reranker import RerankClient, RerankUnavailable
 from app.rag.retriever import RetrievedChunk, Retriever
 
@@ -92,6 +93,23 @@ class RagPipeline:
         timings: dict[str, float] = {}
 
         t0 = perf_counter()
+        routed = route(question)
+        if routed.kind == "premium_refuse":
+            timings["total_ms"] = round((perf_counter() - t0) * 1000, 1)
+            logger.info(
+                "ask refused by router",
+                extra={"extra_fields": {"matched": routed.matched, **cfg.model_dump()}},
+            )
+            return AskResult(
+                answer=REFUSAL_PREMIUM,
+                chunks=[],
+                timings=timings,
+                config=cfg,
+                refused=True,
+                refuse_reason="premium_intent",
+            )
+        question = routed.question  # 术语归一后的问题参与检索与生成
+
         recall_k = s.recall_k if cfg.rerank else s.top_k
         chunks = self._retriever.retrieve(
             question, top_k=recall_k, strategy=cfg.chunking, mode=cfg.retrieval
