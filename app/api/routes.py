@@ -2,7 +2,7 @@ import json
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -53,6 +53,23 @@ def get_pipeline() -> RagPipeline:
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@router.get("/eval_results")
+def eval_results() -> dict:
+    """评测历史列表，文件名倒序（最新在前）。"""
+    d = get_settings().eval_results_dir
+    files = sorted((p.name for p in d.glob("*.json")), reverse=True) if d.is_dir() else []
+    return {"files": list(files)}
+
+
+@router.get("/eval_results/{name}")
+def eval_result(name: str) -> dict:
+    d = get_settings().eval_results_dir
+    valid = {p.name for p in d.glob("*.json")} if d.is_dir() else set()
+    if name not in valid:  # 白名单校验，天然阻断路径穿越
+        raise HTTPException(status_code=404, detail="result not found")
+    return json.loads((d / name).read_text(encoding="utf-8"))
 
 
 @router.get("/configs")

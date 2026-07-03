@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # 数据与索引路径
     raw_dir: Path = Path("data/raw")
     index_dir: Path = Path("data/index")
+    eval_results_dir: Path = Path("eval/results")
 
     # 检索参数
     top_k: int = 5
