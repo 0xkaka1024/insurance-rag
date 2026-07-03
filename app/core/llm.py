@@ -26,10 +26,27 @@ class LLMClient:
     def complete(self, system: str, user: str) -> str:
         resp = self._client.chat.completions.create(
             model=self.model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
+            messages=self._messages(system, user),
             temperature=0.2,  # 条款问答要事实性，压低随机性
         )
         return resp.choices[0].message.content or ""
+
+    def stream(self, system: str, user: str):
+        """逐段产出增量文本（SSE 流式用）。"""
+        resp = self._client.chat.completions.create(
+            model=self.model,
+            messages=self._messages(system, user),
+            temperature=0.2,
+            stream=True,
+        )
+        for chunk in resp:
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                yield delta
+
+    @staticmethod
+    def _messages(system: str, user: str) -> list[dict]:
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]

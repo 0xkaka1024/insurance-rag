@@ -1,7 +1,9 @@
+import json
 from functools import lru_cache
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -18,6 +20,7 @@ router = APIRouter()
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     config: RagConfig = RagConfig()
+    stream: bool = False
 
 
 class ChunkOut(BaseModel):
@@ -65,8 +68,15 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+def _sse(pipeline: RagPipeline, req: AskRequest):
+    for event, data in pipeline.ask_stream(req.question, req.config):
+        yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
 @router.post("/ask", response_model=AskResponse)
-def ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]) -> AskResponse:
+def ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]):
+    if req.stream:
+        return StreamingResponse(_sse(pipeline, req), media_type="text/event-stream")
     result = pipeline.ask(req.question, req.config)
     return AskResponse(
         answer=result.answer,
