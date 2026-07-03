@@ -4,13 +4,13 @@
 
 ## Phase 0：开工前准备（半天，全部就绪再写代码）
 
-- [ ] **DeepSeek API key**：platform.deepseek.com 充值 ¥10 起（评测 50 题 × 8 配置约消耗 ¥5-10）
+- [x] **DeepSeek API key**：platform.deepseek.com 充值 ¥10 起（评测 50 题 × 8 配置约消耗 ¥5-10）
 - [ ] **SiliconFlow API key**：siliconflow.cn（bge-m3 embedding + bge-reranker，注册送额度）
-- [ ] **DashScope API key**（P1 才需要）：Qwen-VL 表格解析 + qwen-plus 对比
-- [ ] **条款 PDF ×3**：AIA 香港官网产品页下载，建议组合：重疾（如「爱伴航」系列）+ 自愿医保 + 储蓄/寿险各 1 款；存入 `data/raw/`，文件名规范：`产品名_版本.pdf`
-- [ ] **GitHub 仓库**：新建 public repo `insurance-rag`，首个 commit 就是这三份 docs（commit 历史即工作证明）
+- [x] **DashScope API key**（P1 才需要）：Qwen-VL 表格解析 + qwen-plus 对比
+- [x] **条款 PDF ×3**：AIA 香港官网产品页下载，建议组合：重疾（如「爱伴航」系列）+ 自愿医保 + 储蓄/寿险各 1 款；存入 `data/raw/`，文件名规范：`产品名_版本.pdf`
+- [x] **GitHub 仓库**：新建 public repo `insurance-rag`，首个 commit 就是这三份 docs（commit 历史即工作证明）
 - [ ] **Hugging Face 账号**：注册 + 新建 Docker 类型 Space（占位即可）
-- [ ] **Python 3.11 venv**：`requirements.txt` 初版（fastapi/uvicorn/chromadb/rank_bm25/jieba/pdfplumber/openai/ragas/python-dotenv）
+- [x] **Python 3.11 venv**：`requirements.txt` 初版（fastapi/uvicorn/chromadb/rank_bm25/jieba/pdfplumber/openai/ragas/python-dotenv）
 
 ## 工程约定：Git 同步与测试（贯穿每一天）
 
@@ -23,20 +23,20 @@
 
 ## D1：端到端最小闭环（先跑通，再谈好）
 
-- [ ] 项目骨架按 ARCHITECTURE.md 目录建立；.env.example、config.py
-- [ ] 可观测性基线：结构化 JSON 日志 + request_id 中间件 + `/health` 端点
-- [ ] parser.py：pdfplumber 逐页提取 + 繁简归一（opencc）
-- [ ] chunker.py：先只做 FixedChunker（512 token / 15% overlap）
-- [ ] indexer.py：SiliconFlow embedding → Chroma `clauses_fixed`
-- [ ] /ask 最简版：纯向量检索 top5 → DeepSeek 生成（暂不流式）
+- [x] 项目骨架按 ARCHITECTURE.md 目录建立；.env.example、config.py
+- [x] 可观测性基线：结构化 JSON 日志 + request_id 中间件 + `/health` 端点
+- [x] parser.py：pdfplumber 逐页提取 + 繁简归一（opencc）
+- [x] chunker.py：先只做 FixedChunker（512 token / 15% overlap）
+- [x] indexer.py：SiliconFlow embedding → Chroma `clauses_fixed`
+- [x] /ask 最简版：纯向量检索 top5 → DeepSeek 生成（暂不流式）
 - **当日验收**：对 1 份真实条款提问"等待期多少天"，返回含正确答案的回复
 
 ## D2：切片对比 + 混合检索
 
 - [x] parser 双栏检测与分栏提取：简介类 PDF 两栏交错修复，真实 PDF 抽页人工校验
-- [ ] StructuralChunker：层级感知（条款编号优先，简介类按章节标题），过长二次切分；元数据含 产品/层级/页码
-- [ ] 入库脚本支持双 collection 并行构建 + 文件 hash 幂等 + 白名单校验（training deck / 费率表文件代码级拒绝）
-- [ ] BM25 索引（jieba 分词）持久化；RRF 融合；/ask 支持 retrieval=vector|hybrid
+- [x] StructuralChunker：层级感知（条款编号优先，简介类按章节标题），过长二次切分；元数据含 产品/层级/页码
+- [x] 入库脚本支持双 collection 并行构建 + 文件 hash 幂等 + 白名单校验（training deck / 费率表文件代码级拒绝）
+- [x] BM25 索引（jieba 分词）持久化；RRF 融合；/ask 支持 retrieval=vector|hybrid
 - **当日验收**：同一问题 fixed vs structural、vector vs hybrid 的检索结果肉眼可见差异
 
 ## D3：重排 + 引用 + 拒答 + 路由
