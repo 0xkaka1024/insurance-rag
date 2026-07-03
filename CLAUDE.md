@@ -19,7 +19,7 @@
 ## 红线
 
 - API key 只放 `.env`（已 gitignore），任何代码、日志、commit 不得出现密钥
-- `data/` 不入 git；文件名含 `training deck` 的内部培训材料**不得**入库到公开部署的索引，v1 入库白名单：危疾类条款 ×1、newVHISmedical、GlobalFlexiSavings
+- `data/` 不入 git；文件名含 `training deck` 的内部培训材料**不得**入库到公开部署的索引，v1 入库白名单（按产品标识精确匹配，见 `app/ingest/service.py:INGEST_WHITELIST`）：危疾类条款 ×1（待选定）、newVHISmedical、GlobalFlexiSavingsInsurancePlan
 - `premiumtable` / `premium-table` 费率表文件是 v2 查表功能原料，v1 不入库
 - 保费/费率类问题一律路由拦截拒答，不允许 RAG 生成数字
 - 回答中的事实论断必须带 [产品-条号-页码] 引用；检索低分必须拒答
