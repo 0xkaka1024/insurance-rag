@@ -2,7 +2,7 @@ import pytest
 
 from app.core.config import Settings
 from app.ingest.chunker import Chunk
-from app.ingest.indexer import ChromaIndexer
+from app.ingest.indexer import Indexer
 
 
 class FakeEmbedder:
@@ -24,8 +24,8 @@ def _chunk(seq: int, text: str) -> Chunk:
 
 
 @pytest.fixture
-def indexer(tmp_path) -> ChromaIndexer:
-    return ChromaIndexer(settings=Settings(_env_file=None, index_dir=tmp_path / "index"))
+def indexer(tmp_path) -> Indexer:
+    return Indexer(settings=Settings(_env_file=None, index_dir=tmp_path / "index"))
 
 
 def test_index_writes_documents_and_metadata(indexer):

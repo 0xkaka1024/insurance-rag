@@ -6,11 +6,21 @@
 import logging
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Literal
+
+from pydantic import BaseModel
 
 from app.core.llm import LLMClient
-from app.rag.retriever import RetrievedChunk, VectorRetriever
+from app.rag.retriever import RetrievedChunk, Retriever
 
 logger = logging.getLogger("rag")
+
+
+class RagConfig(BaseModel):
+    """Playground 可插拔维度（查询期实时切换；入库期维度决定读哪个 collection）。"""
+
+    chunking: Literal["fixed", "structural"] = "fixed"
+    retrieval: Literal["vector", "hybrid"] = "vector"
 
 SYSTEM_PROMPT = (
     "你是保险条款问答助手，服务对象是保险代理人。"
@@ -36,16 +46,20 @@ class AskResult:
     answer: str
     chunks: list[RetrievedChunk]
     timings: dict[str, float]
+    config: RagConfig
 
 
 class RagPipeline:
-    def __init__(self, retriever: VectorRetriever, llm: LLMClient):
+    def __init__(self, retriever: Retriever, llm: LLMClient):
         self._retriever = retriever
         self._llm = llm
 
-    def ask(self, question: str) -> AskResult:
+    def ask(self, question: str, config: RagConfig | None = None) -> AskResult:
+        cfg = config or RagConfig()
         t0 = perf_counter()
-        chunks = self._retriever.retrieve(question)
+        chunks = self._retriever.retrieve(
+            question, strategy=cfg.chunking, mode=cfg.retrieval
+        )
         t1 = perf_counter()
         answer = self._llm.complete(SYSTEM_PROMPT, build_user_prompt(chunks, question))
         t2 = perf_counter()
@@ -56,6 +70,9 @@ class RagPipeline:
         }
         top_score = chunks[0].score if chunks else None
         logger.info(
-            "ask served", extra={"extra_fields": {**timings, "top_score": top_score}}
+            "ask served",
+            extra={
+                "extra_fields": {**timings, "top_score": top_score, **cfg.model_dump()}
+            },
         )
-        return AskResult(answer=answer, chunks=chunks, timings=timings)
+        return AskResult(answer=answer, chunks=chunks, timings=timings, config=cfg)

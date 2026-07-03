@@ -14,7 +14,7 @@ from pathlib import Path
 from app.core.config import Settings, get_settings
 from app.core.embedding import EmbeddingClient
 from app.ingest.chunker import Chunker, FixedChunker
-from app.ingest.indexer import ChromaIndexer
+from app.ingest.indexer import Indexer
 from app.ingest.parser import parse_pdf, product_from_filename
 from app.ingest.structural import StructuralChunker
 
@@ -56,7 +56,7 @@ def _save_manifest(path: Path, manifest: dict[str, str]) -> None:
 def ingest_files(
     paths: list[Path],
     chunkers: list[Chunker] | None = None,
-    indexer: ChromaIndexer | None = None,
+    indexer: Indexer | None = None,
     embedder: EmbeddingClient | None = None,
     settings: Settings | None = None,
     force: bool = False,
@@ -68,7 +68,7 @@ def ingest_files(
     """
     s = settings or get_settings()
     chunkers = chunkers or [FixedChunker(), StructuralChunker()]
-    indexer = indexer or ChromaIndexer(s)
+    indexer = indexer or Indexer(s)
     embedder = embedder or EmbeddingClient(s)
 
     manifest_path = s.index_dir / "ingest_manifest.json"

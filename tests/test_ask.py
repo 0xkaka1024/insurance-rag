@@ -20,7 +20,11 @@ def _chunk(text: str, score: float = 0.9) -> RetrievedChunk:
 
 
 class FakeRetriever:
-    def retrieve(self, question, top_k=None, strategy="fixed"):
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def retrieve(self, question, top_k=None, strategy="fixed", mode="vector"):
+        self.calls.append({"strategy": strategy, "mode": mode})
         return [_chunk("等待期为90天。")]
 
 
@@ -62,6 +66,32 @@ def test_ask_endpoint(monkeypatch):
     assert body["answer"] == "等待期为90天。"
     assert body["chunks"][0]["product"] == "Demo"
     assert body["timings"]["total_ms"] >= 0
+    assert body["config"] == {"chunking": "fixed", "retrieval": "vector"}  # 默认配置回显
+
+
+def test_ask_endpoint_routes_config_to_retriever():
+    retriever = FakeRetriever()
+    app.dependency_overrides[get_pipeline] = lambda: RagPipeline(retriever, FakeLLM())
+    try:
+        resp = client.post(
+            "/ask",
+            json={
+                "question": "等待期多少天？",
+                "config": {"chunking": "structural", "retrieval": "hybrid"},
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 200
+    assert resp.json()["config"] == {"chunking": "structural", "retrieval": "hybrid"}
+    assert retriever.calls == [{"strategy": "structural", "mode": "hybrid"}]
+
+
+def test_ask_endpoint_rejects_unknown_config_value():
+    resp = client.post(
+        "/ask", json={"question": "q", "config": {"retrieval": "quantum"}}
+    )
+    assert resp.status_code == 422
 
 
 def test_ask_endpoint_validates_question():
