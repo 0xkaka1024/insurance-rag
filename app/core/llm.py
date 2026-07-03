@@ -24,12 +24,23 @@ class LLMClient:
         self.model = s.llm_model
 
     def complete(self, system: str, user: str) -> str:
+        text, _ = self.complete_with_usage(system, user)
+        return text
+
+    def complete_with_usage(self, system: str, user: str) -> tuple[str, dict]:
+        """返回 (文本, token 用量)；评测的成本统计依赖 usage。"""
         resp = self._client.chat.completions.create(
             model=self.model,
             messages=self._messages(system, user),
             temperature=0.2,  # 条款问答要事实性，压低随机性
         )
-        return resp.choices[0].message.content or ""
+        usage = {
+            "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0,
+            "completion_tokens": (
+                getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
+            ),
+        }
+        return resp.choices[0].message.content or "", usage
 
     def stream(self, system: str, user: str):
         """逐段产出增量文本（SSE 流式用）。"""

@@ -7,12 +7,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
-from app.core.embedding import EmbeddingClient
-from app.core.llm import LLMClient
-from app.ingest.indexer import Indexer
-from app.rag.pipeline import RagConfig, RagPipeline
-from app.rag.reranker import RerankClient
-from app.rag.retriever import Retriever
+from app.rag.pipeline import RagConfig, RagPipeline, build_pipeline
 
 router = APIRouter()
 
@@ -52,15 +47,7 @@ class AskResponse(BaseModel):
 
 @lru_cache
 def get_pipeline() -> RagPipeline:
-    settings = get_settings()
-    indexer = Indexer(settings)
-    embedder = EmbeddingClient(settings)
-    return RagPipeline(
-        retriever=Retriever(indexer, embedder, settings),
-        llm=LLMClient(settings),
-        reranker=RerankClient(settings),
-        settings=settings,
-    )
+    return build_pipeline(get_settings())
 
 
 @router.get("/health")

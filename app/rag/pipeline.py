@@ -11,7 +11,9 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
+from app.core.embedding import EmbeddingClient
 from app.core.llm import LLMClient
+from app.ingest.indexer import Indexer
 from app.rag.citations import Citation, render_citations
 from app.rag.preprocess import REFUSAL_PREMIUM, route
 from app.rag.reranker import RerankClient, RerankUnavailable
@@ -179,13 +181,21 @@ class RagPipeline:
         if p.refused:
             return self._finish(p, p.refusal_answer, [])
         t2 = perf_counter()
-        raw = self._llm.complete(SYSTEM_PROMPT, build_user_prompt(p.chunks, p.question))
+        usage: dict = {}
+        with_usage = getattr(self._llm, "complete_with_usage", None)
+        prompt = build_user_prompt(p.chunks, p.question)
+        if with_usage:
+            raw, usage = with_usage(SYSTEM_PROMPT, prompt)
+        else:  # 测试用 Fake 只实现 complete
+            raw = self._llm.complete(SYSTEM_PROMPT, prompt)
         answer, citations = render_citations(raw, p.chunks)
         p.timings["generate_ms"] = round((perf_counter() - t2) * 1000, 1)
         if not citations:
             # 非拒答回答不带任何有效引用：红线告警，评测统计 citations==[]
             logger.warning("answer without citations", extra={"extra_fields": {}})
-        return self._finish(p, answer, citations)
+        result = self._finish(p, answer, citations)
+        result.meta["usage"] = usage
+        return result
 
     def ask_stream(self, question: str, config: RagConfig | None = None):
         """SSE 事件流：chunks →（delta ×N）→ final。
@@ -240,3 +250,15 @@ class _Prepared:
     refuse_reason: str = ""
     refusal_answer: str = ""
     degraded: bool = False
+
+
+def build_pipeline(settings: Settings | None = None) -> RagPipeline:
+    """组装完整管线；API 层与评测层共用同一工厂，保证行为一致。"""
+    s = settings or get_settings()
+    indexer = Indexer(s)
+    return RagPipeline(
+        retriever=Retriever(indexer, EmbeddingClient(s), s),
+        llm=LLMClient(s),
+        reranker=RerankClient(s),
+        settings=s,
+    )
