@@ -19,6 +19,9 @@ from app.ingest.service import ingest_files  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(description="解析条款 PDF 并写入检索索引")
     parser.add_argument("paths", nargs="+", type=Path, help="PDF 文件或目录")
+    parser.add_argument(
+        "--force", action="store_true", help="忽略文件 hash 强制重建（切片逻辑升级后使用）"
+    )
     args = parser.parse_args()
 
     files: list[Path] = []
@@ -34,7 +37,7 @@ def main() -> int:
         print("未找到任何 PDF", file=sys.stderr)
         return 2
 
-    result = ingest_files(files)
+    result = ingest_files(files, force=args.force)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

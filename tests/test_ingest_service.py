@@ -41,6 +41,12 @@ class NullEmbedder:
         return [[0.0] for _ in texts]
 
 
+def _settings(tmp_path):
+    from app.core.config import Settings
+
+    return Settings(_env_file=None, index_dir=tmp_path / "index")
+
+
 def test_ingest_files_rejects_and_ingests(tmp_path):
     good = tmp_path / "newVHISmedical-tc.pdf"
     good.write_bytes(make_pdf("Waiting period is 90 days."))
@@ -48,10 +54,59 @@ def test_ingest_files_rejects_and_ingests(tmp_path):
     bad.write_bytes(make_pdf("internal only"))
 
     indexer = RecordingIndexer()
-    result = ingest_files([good, bad], indexer=indexer, embedder=NullEmbedder())
+    result = ingest_files(
+        [good, bad], indexer=indexer, embedder=NullEmbedder(), settings=_settings(tmp_path)
+    )
 
     assert result["files"] == 1
     assert result["ingested"] == ["newVHISmedical-tc.pdf"]
     assert len(result["rejected"]) == 1
     assert "training deck" in result["rejected"][0]
     assert result["chunks"] == len(indexer.indexed) > 0
+
+
+def test_ingest_builds_both_strategies_by_default(tmp_path):
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days."))
+    indexer = RecordingIndexer()
+    ingest_files([good], indexer=indexer, embedder=NullEmbedder(), settings=_settings(tmp_path))
+    strategies = {cid.split(":")[1] for cid in indexer.indexed}
+    assert strategies == {"fixed", "structural"}
+
+
+def test_reingest_skipped_by_hash_and_forced(tmp_path):
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days."))
+    settings = _settings(tmp_path)
+
+    first = ingest_files(
+        [good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings
+    )
+    assert first["ingested"] == ["newVHISmedical-tc.pdf"]
+
+    second_indexer = RecordingIndexer()
+    second = ingest_files(
+        [good], indexer=second_indexer, embedder=NullEmbedder(), settings=settings
+    )
+    assert second["skipped"] == ["newVHISmedical-tc.pdf"]
+    assert second_indexer.indexed == []  # 没有花任何 embedding
+
+    forced = ingest_files(
+        [good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings,
+        force=True,
+    )
+    assert forced["ingested"] == ["newVHISmedical-tc.pdf"]
+
+
+def test_changed_file_reingested(tmp_path):
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days."))
+    settings = _settings(tmp_path)
+    ingest_files([good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings)
+
+    good.write_bytes(make_pdf("Waiting period is 30 days."))
+    result = ingest_files(
+        [good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings
+    )
+    assert result["ingested"] == ["newVHISmedical-tc.pdf"]
+    assert result["skipped"] == []
