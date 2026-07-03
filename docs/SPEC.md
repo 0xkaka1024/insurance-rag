@@ -13,6 +13,7 @@
 2. 策略对比可量化：Playground 支持 8 套核心配置组合，评测表能证明 structural 切片 + hybrid 检索 + rerank 相对 baseline 的提升幅度（预期 context_recall 提升 ≥ 10%）
 3. 真实可用：作者本人每周实际使用 ≥ 3 次，单问 P95 延迟 < 5s
 4. 可公开展示：线上 demo 链接 + GitHub 仓库 + 含评测数字的 README，两周内上线并进入简历
+5. 工程质量生产级：结构化日志与请求追踪、外部依赖超时/重试/降级、入库白名单代码级强制、CI 质量门禁、依赖版本锁定
 
 ## 3. 非目标（v1 明确不做）
 
@@ -43,13 +44,13 @@
 
 | # | 需求 | 验收标准 |
 |---|---|---|
-| R1 | PDF 解析入库（文本路径） | 给定 3 份 AIA 条款 PDF，`python scripts/ingest.py` 一条命令完成解析→双切片→元数据→索引；重复入库不产生重复数据 |
+| R1 | PDF 解析入库（文本路径） | 给定 3 份 AIA 条款 PDF，`python scripts/ingest.py` 一条命令完成解析→双切片→元数据→索引；重复入库不产生重复数据；白名单外文件（training deck / 费率表）被代码校验拒绝并提示原因 |
 | R2 | 双切片策略 | fixed 与 structural 各生成独立 collection；structural 切片的 chunk 带「产品>章>条」层级元数据；随机抽 10 个 chunk 人工检查无条款被拦腰截断 |
 | R3 | 混合检索 + 重排 | /ask 支持 vector/hybrid 切换与 rerank 开关；hybrid = 向量 + BM25 + RRF |
 | R4 | 引用与拒答 | 回答中每个事实论断带 [产品-条号-页码] 标注，前端可点开对应原文 chunk；检索分数低于阈值时输出拒答话术；保费类问题被路由拦截并说明 |
 | R5 | Playground 对照 | 前端可勾选 config，同一问题双配置左右对照，展示各自检索到的 chunk 与回答 |
 | R6 | 评测 | 50 条评测集（五类问题×三档难度）；run_eval.py 跑完 8 套配置输出 results.json；RAGAS 四指标 + 拒答准确率渲染成表 |
-| R7 | 流式与部署 | /ask 支持 SSE 流式输出；Dockerfile 单容器；HF Spaces 线上可访问 |
+| R7 | 流式与部署 | /ask 支持 SSE 流式输出；Dockerfile 单容器；HF Spaces 线上可访问；`/health` 可用；结构化日志含 request_id 与阶段耗时；rerank 故障自动降级不中断服务 |
 
 ### P1（显著增强，时间允许即做）
 

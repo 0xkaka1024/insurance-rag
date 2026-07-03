@@ -145,6 +145,10 @@ insurance-rag/
 - 回答中每个事实性论断有引用；无依据时拒答率 100%（评测集拒答题）
 - API key 全部走环境变量，仓库不含任何密钥与条款原文（PDF 不入 git）
 - 入库幂等：同一 PDF 重复入库不产生重复 chunk（按文件 hash 判断）
+- 可观测性：结构化 JSON 日志（request_id 贯穿全链路、各阶段 timings、token 用量），`/health` 健康检查
+- 外部依赖容错：embedding / rerank / LLM 调用统一超时与重试（指数退避）；rerank 失败自动降级为跳过重排（记录告警，不中断问答）
+- 数据治理（代码级强制）：ingest 按白名单校验文件，training deck 与费率表（premium table）文件一律拒绝入库，不依赖人工自觉
+- 可复现性：requirements.txt 锁定精确版本，本地与 CI 环境一致
 
 ## 8. v2 Roadmap（写进 README 展示规划能力）
 
@@ -152,3 +156,4 @@ insurance-rag/
 2. 保费查询：费率表结构化入库 + function calling 查表路由（数值零幻觉方案）
 3. Next.js 前端（Vercel）+ 后端分离部署
 4. Chroma → Milvus/pgvector 迁移；多用户与文档权限
+5. 可观测性升级：LLM tracing（Langfuse / OpenTelemetry）、监控告警、成本看板

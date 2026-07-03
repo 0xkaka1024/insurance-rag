@@ -24,6 +24,7 @@
 ## D1：端到端最小闭环（先跑通，再谈好）
 
 - [ ] 项目骨架按 ARCHITECTURE.md 目录建立；.env.example、config.py
+- [ ] 可观测性基线：结构化 JSON 日志 + request_id 中间件 + `/health` 端点
 - [ ] parser.py：pdfplumber 逐页提取 + 繁简归一（opencc）
 - [ ] chunker.py：先只做 FixedChunker（512 token / 15% overlap）
 - [ ] indexer.py：SiliconFlow embedding → Chroma `clauses_fixed`
@@ -33,13 +34,14 @@
 ## D2：切片对比 + 混合检索
 
 - [ ] StructuralChunker：正则匹配条款层级（第X章/第X条/编号体系），过长二次切分；元数据含 产品/章/条/页码
-- [ ] 入库脚本支持双 collection 并行构建 + 文件 hash 幂等
+- [ ] 入库脚本支持双 collection 并行构建 + 文件 hash 幂等 + 白名单校验（training deck / 费率表文件代码级拒绝）
 - [ ] BM25 索引（jieba 分词）持久化；RRF 融合；/ask 支持 retrieval=vector|hybrid
 - **当日验收**：同一问题 fixed vs structural、vector vs hybrid 的检索结果肉眼可见差异
 
 ## D3：重排 + 引用 + 拒答 + 路由
 
 - [ ] reranker.py：SiliconFlow bge-reranker API，top20 → top5
+- [ ] 外部 API 容错：统一超时 + 重试（指数退避）；rerank 失败自动跳过并记录告警，不中断问答
 - [ ] generator.py：prompt 强制 [产品-条号-页码] 引用；rerank 分数低于阈值走拒答模板
 - [ ] preprocess.py：术语归一表（先手写 20 组常见口语↔条款词）；规则路由（保费类 → 拒答引导）
 - **当日验收**：问"30岁买每年多少钱"被拦截；问文档里没有的内容得到拒答；正常问题回答带可溯源引用
