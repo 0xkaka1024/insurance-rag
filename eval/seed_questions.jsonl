@@ -1,0 +1,10 @@
+{"id": 1, "type": "fact", "difficulty": "easy", "question": "这款重疾险的等待期是多少天？等待期内确诊重疾会如何处理？", "ground_truth": "TODO: 依据实际条款核对（通常为90天，等待期内确诊退还已缴保费并终止合同，需以条款原文为准）", "source_hint": "保险责任-等待期条款", "note": "MOCK 数据，正式评测集需 kaka 依据真实条款逐条核对后替换"}
+{"id": 2, "type": "fact", "difficulty": "easy", "question": "身故赔偿金与已支付的危疾赔偿是否会重复给付？", "ground_truth": "TODO: 依据实际条款核对", "source_hint": "身故保障条款/赔偿限制条款", "note": "MOCK"}
+{"id": 3, "type": "synthesis", "difficulty": "medium", "question": "投保前已有甲状腺结节但未告知，之后确诊甲状腺癌，能否获得赔偿？", "ground_truth": "TODO: 需综合「如实告知义务」与「责任免除」两处条款作答", "source_hint": "跨段：投保人义务 + 责任免除", "note": "MOCK，考察跨 chunk 综合"}
+{"id": 4, "type": "synthesis", "difficulty": "medium", "question": "等待期后确诊原位癌，可以获得多少赔偿？赔付后保单是否终止？", "ground_truth": "TODO: 需综合「早期危疾定义」「赔付比例」「保单延续条款」作答", "source_hint": "跨段：疾病定义 + 赔付规则", "note": "MOCK"}
+{"id": 5, "type": "table", "difficulty": "medium", "question": "轻症/早期危疾的赔付比例是保额的百分之多少？最多可以赔几次？", "ground_truth": "TODO: 依据条款赔付表核对（常见为保额20%-30%，以条款为准）", "source_hint": "赔付比例表格", "note": "MOCK，考察表格解析"}
+{"id": 6, "type": "table", "difficulty": "hard", "question": "自愿医保计划的每年保障限额和终身保障限额分别是多少？", "ground_truth": "TODO: 依据保障表核对", "source_hint": "保障表（表格）", "note": "MOCK"}
+{"id": 7, "type": "comparison", "difficulty": "hard", "question": "A产品和B产品在癌症多次赔付的间隔期要求上有什么区别？", "ground_truth": "TODO: 选定两款产品后依据各自条款填写", "source_hint": "跨文档：两款产品的多重赔付条款", "note": "MOCK，A/B 替换为实际产品名"}
+{"id": 8, "type": "comparison", "difficulty": "hard", "question": "两款重疾产品对「既往症」的定义哪个范围更宽？具体差异在哪里？", "ground_truth": "TODO: 选定产品后核对", "source_hint": "跨文档：定义条款", "note": "MOCK"}
+{"id": 9, "type": "unanswerable", "difficulty": "easy", "question": "这款产品今年的分红实现率是多少？", "ground_truth": "应拒答：条款文档不含分红实现率数据，应引导用户查询保险公司官网披露页", "source_hint": "无（考察拒答）", "note": "MOCK，预期行为=拒答"}
+{"id": 10, "type": "unanswerable", "difficulty": "easy", "question": "30岁男性投保这款产品，选10年缴费期，每年保费是多少？", "ground_truth": "应路由拦截：保费属计划书/费率表范畴，v1 不支持，应说明原因并引导联系代理人获取计划书", "source_hint": "无（考察保费路由）", "note": "MOCK，预期行为=路由拦截"}
