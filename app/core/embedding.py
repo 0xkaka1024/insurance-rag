@@ -4,9 +4,13 @@
 批量分批发送避免触发单请求条数上限。
 """
 
+import logging
+
 from openai import OpenAI
 
 from app.core.config import Settings, get_settings
+
+logger = logging.getLogger("embedding")
 
 _BATCH_SIZE = 32
 
@@ -14,8 +18,11 @@ _BATCH_SIZE = 32
 class EmbeddingClient:
     def __init__(self, settings: Settings | None = None, client: OpenAI | None = None):
         s = settings or get_settings()
+        if client is None and not s.siliconflow_api_key:
+            # 构造不抛错（否则无密钥环境连应用都起不来），真实调用时会 401
+            logger.warning("SILICONFLOW_API_KEY not configured; embedding calls will fail")
         self._client = client or OpenAI(
-            api_key=s.siliconflow_api_key,
+            api_key=s.siliconflow_api_key or "not-configured",
             base_url=s.siliconflow_base_url,
             timeout=s.request_timeout_s,
             max_retries=s.max_retries,
