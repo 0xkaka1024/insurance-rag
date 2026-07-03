@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>保险条款问答 · Insurance RAG Playground</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #1f2430; --muted: #6b7280;
+    --line: #e5e7eb; --brand: #2563eb; --brand-ink: #fff; --warn: #b45309;
+    --ok: #047857; --refuse-bg: #fef3c7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--line);
+           padding: 12px 20px; display: flex; align-items: center; gap: 20px; }
+  header h1 { font-size: 17px; margin: 0; }
+  nav button { border: 0; background: none; font-size: 15px; padding: 8px 12px;
+               cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+  nav button.active { color: var(--brand); border-color: var(--brand); font-weight: 600; }
+  main { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  select, input[type=text] { border: 1px solid var(--line); border-radius: 8px;
+          padding: 8px 10px; font-size: 14px; background: #fff; }
+  input[type=text] { flex: 1; min-width: 240px; }
+  button.primary { background: var(--brand); color: var(--brand-ink); border: 0;
+          border-radius: 8px; padding: 9px 18px; font-size: 14px; cursor: pointer; }
+  button.primary:disabled { opacity: .5; cursor: wait; }
+  label.dim { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .answer { white-space: pre-wrap; word-break: break-word; }
+  .badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+           background: #eef2ff; color: #3730a3; margin-right: 6px; }
+  .badge.warn { background: var(--refuse-bg); color: var(--warn); }
+  .badge.ok { background: #ecfdf5; color: var(--ok); }
+  .cite { display: inline-block; margin: 4px 6px 0 0; font-size: 12px; cursor: pointer;
+          border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+          background: #f9fafb; }
+  .cite:hover { border-color: var(--brand); color: var(--brand); }
+  .chunk { border-top: 1px dashed var(--line); padding: 8px 0; font-size: 13px; }
+  .chunk .meta { color: var(--muted); font-size: 12px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+  dialog { border: 1px solid var(--line); border-radius: 10px; max-width: 640px;
+           padding: 18px; }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .muted { color: var(--muted); font-size: 13px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>保险条款问答</h1>
+  <nav>
+    <button data-view="chat" class="active">问答</button>
+    <button data-view="playground">Playground 对照</button>
+    <button data-view="eval">评测</button>
+  </nav>
+</header>
+<main>
+
+  <!-- 问答视图 -->
+  <section id="view-chat" class="view active">
+    <div class="card">
+      <div class="row" id="chat-config"></div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <input type="text" id="chat-q" placeholder="例如：等待期多少天？甲状腺结节能不能保？"
+               onkeydown="if(event.key==='Enter')Chat.send()">
+        <button class="primary" id="chat-send" onclick="Chat.send()">提问</button>
+      </div>
+    </div>
+    <div id="chat-out"></div>
+  </section>
+
+  <!-- Playground 对照视图 -->
+  <section id="view-playground" class="view">
+    <div class="card">
+      <div class="row">
+        <input type="text" id="pg-q" placeholder="同一问题，两套配置左右对照"
+               onkeydown="if(event.key==='Enter')Playground.run()">
+        <button class="primary" id="pg-send" onclick="Playground.run()">对比</button>
+      </div>
+    </div>
+    <div class="cols">
+      <div class="card"><b>配置 A</b><div class="row" id="pg-config-a"></div><div id="pg-out-a"></div></div>
+      <div class="card"><b>配置 B</b><div class="row" id="pg-config-b"></div><div id="pg-out-b"></div></div>
+    </div>
+  </section>
+
+  <!-- 评测视图（D5 后接入真实数据） -->
+  <section id="view-eval" class="view">
+    <div class="card">
+      <div class="row">
+        <select id="eval-history" disabled><option>暂无评测结果</option></select>
+        <span class="muted">评测跑分（RAGAS 四指标 + 拒答准确率）将在 D5 完成后展示：
+          读取 eval/results/ 最新一份，并支持历史结果对比。</span>
+      </div>
+      <div id="eval-table"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="chunk-dialog">
+  <div id="chunk-dialog-body"></div>
+  <div style="text-align:right;margin-top:10px">
+    <button class="primary" onclick="document.getElementById('chunk-dialog').close()">关闭</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+/* ---------- 视图切换 ---------- */
+document.querySelectorAll("nav button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("view-" + btn.dataset.view).classList.add("active");
+  };
+});
+
+/* ---------- 配置控件 ---------- */
+const DIM_LABELS = { chunking: "切片", retrieval: "检索", rerank: "重排" };
+let DIMS = { chunking: ["fixed", "structural"], retrieval: ["vector", "hybrid"], rerank: [false, true] };
+
+function renderConfig(el, defaults) {
+  el.innerHTML = "";
+  for (const [dim, options] of Object.entries(DIMS)) {
+    const label = document.createElement("label");
+    label.className = "dim";
+    label.textContent = DIM_LABELS[dim] + " ";
+    const sel = document.createElement("select");
+    sel.dataset.dim = dim;
+    options.forEach(o => {
+      const opt = document.createElement("option");
+      opt.value = JSON.stringify(o);
+      opt.textContent = dim === "rerank" ? (o ? "开" : "关") : o;
+      sel.appendChild(opt);
+    });
+    if (defaults && dim in defaults) sel.value = JSON.stringify(defaults[dim]);
+    label.appendChild(sel);
+    el.appendChild(label);
+  }
+}
+function readConfig(el) {
+  const cfg = {};
+  el.querySelectorAll("select").forEach(s => cfg[s.dataset.dim] = JSON.parse(s.value));
+  return cfg;
+}
+
+/* ---------- 渲染工具 ---------- */
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+function resultCard(data) {
+  const div = document.createElement("div");
+  div.className = "card";
+  const t = data.timings || {};
+  const badges = [];
+  if (data.refused) badges.push(`<span class="badge warn">拒答 · ${esc(data.refuse_reason)}</span>`);
+  else badges.push(`<span class="badge ok">已回答</span>`);
+  if (data.rerank_degraded) badges.push(`<span class="badge warn">rerank 降级</span>`);
+  for (const k of ["retrieve_ms", "rerank_ms", "generate_ms", "total_ms"])
+    if (k in t) badges.push(`<span class="badge">${k.replace("_ms", "")} ${t[k]}ms</span>`);
+
+  const cites = (data.citations || []).map(c =>
+    `<span class="cite" onclick="showChunk('${esc(c.chunk_id)}')">[${esc(c.label)}]</span>`).join("");
+
+  const chunks = (data.chunks || []).map(c => `
+    <div class="chunk" id="chunk-${esc(c.chunk_id)}">
+      <div class="meta">${esc(c.chunk_id)} · ${esc(c.product)}${c.section ? " · " + esc(c.section) : ""}
+        · 第${c.page_start}${c.page_end !== c.page_start ? "-" + c.page_end : ""}页 · score ${(+c.score).toFixed(3)}</div>
+      <div>${esc(c.text)}</div>
+    </div>`).join("");
+
+  div.innerHTML = `
+    <div>${badges.join("")}</div>
+    <div class="answer" data-role="answer">${esc(data.answer || "")}</div>
+    <div data-role="cites">${cites}</div>
+    <details><summary>检索到的 ${data.chunks ? data.chunks.length : 0} 个片段</summary>${chunks}</details>`;
+  window._chunkStore = window._chunkStore || {};
+  (data.chunks || []).forEach(c => window._chunkStore[c.chunk_id] = c);
+  return div;
+}
+
+function showChunk(chunkId) {
+  const c = (window._chunkStore || {})[chunkId];
+  if (!c) return;
+  document.getElementById("chunk-dialog-body").innerHTML = `
+    <div class="meta muted">${esc(c.chunk_id)} · ${esc(c.product)}
+      ${c.section ? " · " + esc(c.section) : ""} · 第${c.page_start}页起</div>
+    <p class="answer">${esc(c.text)}</p>`;
+  document.getElementById("chunk-dialog").showModal();
+}
+
+/* ---------- SSE 解析 ---------- */
+async function askStream(question, config, handlers) {
+  const resp = await fetch("/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, config, stream: true }),
+  });
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      let event = "", data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event: ")) event = line.slice(7);
+        else if (line.startsWith("data: ")) data = line.slice(6);
+      }
+      if (event && handlers[event]) handlers[event](JSON.parse(data));
+    }
+  }
+}
+
+/* ---------- 问答视图（流式） ---------- */
+const Chat = {
+  send: async () => {
+    const q = document.getElementById("chat-q").value.trim();
+    if (!q) return;
+    const btn = document.getElementById("chat-send");
+    btn.disabled = true;
+    const out = document.getElementById("chat-out");
+    const holder = document.createElement("div");
+    holder.className = "card";
+    holder.innerHTML = `<div class="muted">Q：${esc(q)}</div><div class="answer" data-role="live"></div>`;
+    out.prepend(holder);
+    const live = holder.querySelector("[data-role=live]");
+    let chunksData = null;
+    try {
+      await askStream(q, readConfig(document.getElementById("chat-config")), {
+        chunks: d => { chunksData = d; },
+        delta: d => { live.textContent += d.text; },
+        final: d => { holder.replaceWith(wrapFinal(q, d, chunksData)); },
+      });
+    } catch (e) {
+      live.textContent = "请求失败：" + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  },
+};
+function wrapFinal(q, finalData, chunksData) {
+  const merged = Object.assign({}, finalData, { chunks: (chunksData || {}).chunks || [] });
+  const card = resultCard(merged);
+  const head = document.createElement("div");
+  head.className = "muted";
+  head.textContent = "Q：" + q;
+  card.prepend(head);
+  return card;
+}
+
+/* ---------- Playground（双配置非流式并发） ---------- */
+const Playground = {
+  run: async () => {
+    const q = document.getElementById("pg-q").value.trim();
+    if (!q) return;
+    const btn = document.getElementById("pg-send");
+    btn.disabled = true;
+    const jobs = [["a", "pg-config-a", "pg-out-a"], ["b", "pg-config-b", "pg-out-b"]].map(
+      async ([_, cfgId, outId]) => {
+        const out = document.getElementById(outId);
+        out.innerHTML = '<p class="muted">运行中…</p>';
+        try {
+          const resp = await fetch("/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question: q, config: readConfig(document.getElementById(cfgId)) }),
+          });
+          const data = await resp.json();
+          out.innerHTML = "";
+          out.appendChild(resultCard(data));
+        } catch (e) {
+          out.innerHTML = `<p class="muted">失败：${esc(e.message)}</p>`;
+        }
+      });
+    await Promise.all(jobs);
+    btn.disabled = false;
+  },
+};
+
+/* ---------- 初始化 ---------- */
+(async () => {
+  try {
+    const resp = await fetch("/configs");
+    if (resp.ok) DIMS = await resp.json();
+  } catch (e) { /* 用内置默认 */ }
+  renderConfig(document.getElementById("chat-config"),
+               { chunking: "structural", retrieval: "hybrid", rerank: true });  // 聊天默认最优
+  renderConfig(document.getElementById("pg-config-a"),
+               { chunking: "fixed", retrieval: "vector", rerank: false });      // baseline
+  renderConfig(document.getElementById("pg-config-b"),
+               { chunking: "structural", retrieval: "hybrid", rerank: true });  // 最优
+})();
+</script>
+</body>
+</html>

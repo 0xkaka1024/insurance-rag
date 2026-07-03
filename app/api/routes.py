@@ -68,6 +68,19 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@router.get("/configs")
+def configs() -> dict:
+    """Playground 可选维度，由 RagConfig 模型推导，前端下拉自动同步。"""
+    from typing import get_args
+
+    fields = RagConfig.model_fields
+    return {
+        "chunking": list(get_args(fields["chunking"].annotation)),
+        "retrieval": list(get_args(fields["retrieval"].annotation)),
+        "rerank": [False, True],
+    }
+
+
 def _sse(pipeline: RagPipeline, req: AskRequest):
     for event, data in pipeline.ask_stream(req.question, req.config):
         yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
