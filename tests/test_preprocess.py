@@ -35,7 +35,8 @@ def test_clause_questions_pass_router(q):
 
 
 def test_normalize_colloquial_terms():
-    assert normalize_terms("观察期内确诊怎么办") == "等待期内确诊怎么办"
+    assert normalize_terms("观察期内确诊怎么办") == "等候期内确诊怎么办"
+    assert normalize_terms("等待期多少天") == "等候期多少天"  # 港版条款用「等候期」
     assert normalize_terms("有老毛病能买吗") == "有已有病症能买吗"
     assert normalize_terms("免赔额是多少档") == "自付费是多少档"
 
@@ -43,7 +44,7 @@ def test_normalize_colloquial_terms():
 def test_route_normalizes_clause_question():
     r = route("免责期内住院费能赔吗")
     assert r.kind == "clause"
-    assert "等待期" in r.question
+    assert "等候期" in r.question
     assert "住院保障" in r.question
 
 
