@@ -25,6 +25,7 @@ def test_whitelist_blocks_unknown_product():
 def test_whitelisted_products_pass():
     assert check_ingestable(Path("newVHISmedical-tc.pdf")) == (True, "")
     assert check_ingestable(Path("GlobalFlexiSavingsInsurancePlan_tc.pdf")) == (True, "")
+    assert check_ingestable(Path("OnYourSideInsurancePlan2_tc.pdf")) == (True, "")
 
 
 class RecordingIndexer:

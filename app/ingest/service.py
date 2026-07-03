@@ -23,8 +23,10 @@ logger = logging.getLogger("ingest")
 DENY_SUBSTRINGS = ("training deck", "premiumtable", "premium-table")
 
 # v1 入库白名单（CLAUDE.md 红线），按 product_from_filename 推导的产品标识精确匹配。
-# 危疾类条款一款待 kaka 选定后加入（SPEC 开放问题）。
-INGEST_WHITELIST = frozenset({"newVHISmedical", "GlobalFlexiSavingsInsurancePlan"})
+# 三款结构差异大的产品：医疗（VHIS）+ 储蓄 + 危疾（爱伴航2，kaka 2026-07-03 选定）。
+INGEST_WHITELIST = frozenset(
+    {"newVHISmedical", "GlobalFlexiSavingsInsurancePlan", "OnYourSideInsurancePlan2"}
+)
 
 
 def check_ingestable(path: Path) -> tuple[bool, str]:
