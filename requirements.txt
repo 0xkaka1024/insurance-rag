@@ -1,0 +1,20 @@
+# Runtime
+fastapi==0.139.0
+uvicorn==0.49.0
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-dotenv==1.2.2
+openai==2.44.0
+chromadb==1.5.9
+rank-bm25==0.2.2
+jieba==0.42.1
+pdfplumber==0.11.10
+OpenCC==1.4.0
+httpx==0.28.1
+
+# Evaluation (manual only, not in CI hot path)
+ragas==0.4.3
+
+# Dev / QA
+pytest==9.1.1
+ruff==0.15.20
