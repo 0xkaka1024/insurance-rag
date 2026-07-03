@@ -41,10 +41,10 @@
 
 ## D3：重排 + 引用 + 拒答 + 路由
 
-- [ ] reranker.py：SiliconFlow bge-reranker API，top20 → top5
-- [ ] 外部 API 容错：统一超时 + 重试（指数退避）；rerank 失败自动跳过并记录告警，不中断问答
-- [ ] generator.py：prompt 强制 [产品-条号-页码] 引用；rerank 分数低于阈值走拒答模板
-- [ ] preprocess.py：术语归一表（先手写 20 组常见口语↔条款词）；规则路由（保费类 → 拒答引导）
+- [x] reranker.py：SiliconFlow bge-reranker API，top20 → top5
+- [x] 外部 API 容错：统一超时 + 重试（指数退避）；rerank 失败自动跳过并记录告警，不中断问答
+- [x] generator.py：prompt 强制 [产品-条号-页码] 引用；rerank 分数低于阈值走拒答模板
+- [x] preprocess.py：术语归一表（先手写 20 组常见口语↔条款词）；规则路由（保费类 → 拒答引导）
 - **当日验收**：问"30岁买每年多少钱"被拦截；问文档里没有的内容得到拒答；正常问题回答带可溯源引用
 
 ## D4：Playground 前端 + 流式
