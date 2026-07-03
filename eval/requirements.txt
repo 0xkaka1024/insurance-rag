@@ -1,0 +1,3 @@
+# RAGAS 评测专用（只手动跑，不进 CI、不进部署镜像）
+-r ../requirements.txt
+ragas==0.4.3
