@@ -49,8 +49,8 @@
 
 ## D4：Playground 前端 + 流式
 
-- [ ] /ask 改 SSE 流式；响应附 chunks/citations/timings
-- [ ] static/index.html 三视图：聊天（默认最优配置）、对照（双 config 勾选 + 左右渲染）、评测表（占位）
+- [x] /ask 改 SSE 流式；响应附 chunks/citations/timings
+- [x] static/index.html 三视图：聊天（默认最优配置）、对照（双 config 勾选 + 左右渲染）、评测表（占位）
 - **当日验收**：浏览器里勾选两套配置、同一问题左右对照，引用可点开原文
 
 ## D5：评测集 + RAGAS
