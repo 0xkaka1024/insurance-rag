@@ -66,7 +66,12 @@ def test_ask_endpoint(monkeypatch):
     assert body["answer"] == "等待期为90天。"
     assert body["chunks"][0]["product"] == "Demo"
     assert body["timings"]["total_ms"] >= 0
-    assert body["config"] == {"chunking": "fixed", "retrieval": "vector"}  # 默认配置回显
+    assert body["config"] == {
+        "chunking": "fixed",
+        "retrieval": "vector",
+        "rerank": False,
+    }  # 默认配置回显
+    assert body["refused"] is False
 
 
 def test_ask_endpoint_routes_config_to_retriever():
@@ -83,7 +88,11 @@ def test_ask_endpoint_routes_config_to_retriever():
     finally:
         app.dependency_overrides.clear()
     assert resp.status_code == 200
-    assert resp.json()["config"] == {"chunking": "structural", "retrieval": "hybrid"}
+    assert resp.json()["config"] == {
+        "chunking": "structural",
+        "retrieval": "hybrid",
+        "rerank": False,
+    }
     assert retriever.calls == [{"strategy": "structural", "mode": "hybrid"}]
 
 

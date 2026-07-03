@@ -9,6 +9,7 @@ from app.core.embedding import EmbeddingClient
 from app.core.llm import LLMClient
 from app.ingest.indexer import Indexer
 from app.rag.pipeline import RagConfig, RagPipeline
+from app.rag.reranker import RerankClient
 from app.rag.retriever import Retriever
 
 router = APIRouter()
@@ -33,6 +34,9 @@ class AskResponse(BaseModel):
     chunks: list[ChunkOut]
     timings: dict[str, float]
     config: RagConfig
+    refused: bool
+    refuse_reason: str
+    rerank_degraded: bool
 
 
 @lru_cache
@@ -43,6 +47,8 @@ def get_pipeline() -> RagPipeline:
     return RagPipeline(
         retriever=Retriever(indexer, embedder, settings),
         llm=LLMClient(settings),
+        reranker=RerankClient(settings),
+        settings=settings,
     )
 
 
@@ -59,4 +65,7 @@ def ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]
         chunks=[ChunkOut(**vars(c)) for c in result.chunks],
         timings=result.timings,
         config=result.config,
+        refused=result.refused,
+        refuse_reason=result.refuse_reason,
+        rerank_degraded=result.rerank_degraded,
     )
