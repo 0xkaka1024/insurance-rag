@@ -18,6 +18,9 @@ from app.rag.pipeline import RagConfig, RagPipeline
 GT_FREE_METRICS = ("faithfulness", "answer_relevancy")
 ALL_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall")
 
+# 期望拒答的题型（种子题模板用 unanswerable，兼容简写 refuse）
+REFUSE_TYPES = frozenset({"unanswerable", "refuse"})
+
 # DeepSeek 定价（CNY / 1M tokens，2026-07 官网价，调价请更新此表）
 PRICE_PER_MTOK = {"deepseek-chat": {"in": 2.0, "out": 8.0}}
 
@@ -60,7 +63,7 @@ def validate_metrics(metrics: list[str], rows: list[dict]) -> None:
         missing = [
             r["question"][:20]
             for r in rows
-            if r["type"] != "refuse" and not r.get("ground_truth")
+            if r["type"] not in REFUSE_TYPES and not r.get("ground_truth")
         ]
         if missing:
             raise ValueError(
@@ -85,7 +88,7 @@ def evaluate_config(
     t0 = time.perf_counter()
     for row in rows:
         result = pipeline.ask(row["question"], cfg)
-        if row["type"] == "refuse":
+        if row["type"] in REFUSE_TYPES:
             refusal_total += 1
             refusal_hits += int(result.refused)
         usage = result.meta.get("usage", {})
@@ -166,7 +169,7 @@ def score_with_ragas(records: list[dict], metrics: list[str], settings: Settings
             "reference": r["ground_truth"],
         }
         for r in records
-        if r["type"] != "refuse" and not r["refused"]
+        if r["type"] not in REFUSE_TYPES and not r["refused"]
     ]
     if not scored_rows:
         return {m: None for m in metrics}

@@ -75,8 +75,8 @@ class FakePipeline:
 def test_evaluate_config_metrics_and_cost():
     rows = [
         {"question": "等待期多少天", "type": "fact", "ground_truth": "90天"},
-        {"question": "30岁多少钱", "type": "refuse"},
-        {"question": "又一个多少钱的问题", "type": "refuse"},
+        {"question": "30岁多少钱", "type": "unanswerable"},  # 种子题模板的拒答类型名
+        {"question": "又一个多少钱的问题", "type": "refuse"},  # 兼容简写
     ]
     entry = evaluate_config(FakePipeline(), RagConfig(), rows, llm_model="deepseek-chat")
     assert entry["refusal_accuracy"] == 1.0
