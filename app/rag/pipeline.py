@@ -36,6 +36,14 @@ REFUSAL_LOW_SCORE = (
 )
 REFUSAL_NO_CONTEXT = "知识库中没有可用的条款资料，无法回答。请先上传相关产品文档。"
 
+# LLM 按 system prompt 的指令做出的「有据拒答」开头话术；检测它以正确置位 refused
+GROUNDED_REFUSAL_MARKER = "无法回答"
+
+
+def _detect_grounded_refusal(p: "_Prepared", answer: str) -> None:
+    if GROUNDED_REFUSAL_MARKER in answer[:40]:
+        p.refused, p.refuse_reason = True, "no_evidence"
+
 SYSTEM_PROMPT = (
     "你是保险条款问答助手，服务对象是保险代理人。"
     "只能依据【条款片段】中的内容回答问题，禁止编造或使用片段之外的知识。"
@@ -190,7 +198,8 @@ class RagPipeline:
             raw = self._llm.complete(SYSTEM_PROMPT, prompt)
         answer, citations = render_citations(raw, p.chunks)
         p.timings["generate_ms"] = round((perf_counter() - t2) * 1000, 1)
-        if not citations:
+        _detect_grounded_refusal(p, answer)
+        if not citations and not p.refused:
             # 非拒答回答不带任何有效引用：红线告警，评测统计 citations==[]
             logger.warning("answer without citations", extra={"extra_fields": {}})
         result = self._finish(p, answer, citations)
@@ -222,7 +231,8 @@ class RagPipeline:
                 yield "delta", {"text": delta}
             answer, citations = render_citations("".join(parts), p.chunks)
             p.timings["generate_ms"] = round((perf_counter() - t2) * 1000, 1)
-            if not citations:
+            _detect_grounded_refusal(p, answer)
+            if not citations and not p.refused:
                 logger.warning("answer without citations", extra={"extra_fields": {}})
             result = self._finish(p, answer, citations)
         yield (

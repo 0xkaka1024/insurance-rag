@@ -105,3 +105,16 @@ def test_missing_reranker_degrades():
     result = pipe.ask("q", RagConfig(rerank=True))
     assert result.rerank_degraded
     assert result.answer == "答案。"
+
+
+class GroundedRefusingLLM:
+    def complete(self, system, user):
+        return "根据现有条款资料无法回答该问题。片段仅提及可查阅官网[1]。"
+
+
+def test_llm_grounded_refusal_sets_flag():
+    pipe = RagPipeline(FakeRetriever(CORPUS), GroundedRefusingLLM(), FakeReranker(), SETTINGS)
+    result = pipe.ask("分红实现率是多少", RagConfig())
+    assert result.refused
+    assert result.refuse_reason == "no_evidence"
+    assert len(result.citations) == 1  # 有据拒答保留指路引用
