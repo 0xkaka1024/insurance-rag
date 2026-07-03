@@ -6,3 +6,4 @@ __pycache__/
 .DS_Store
 .claude/
 eval/candidates.jsonl
+eval/candidates.csv
