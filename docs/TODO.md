@@ -88,3 +88,7 @@
 - AIA 条款若为扫描件/加密 PDF → 换可提取文本的产品文档，或提前启用 VLM 路径
 - HF Spaces 免费实例休眠冷启动 ~30s → README 注明，面试演示前先唤醒
 - RAGAS 依赖 LLM 判分，用 DeepSeek 作 judge 需在 run_eval.py 显式配置（默认走 OpenAI 会报错）
+- SiliconFlow 国内/国际双平台：key 互不通用、模型目录不同（国际站无 bge 系，用 Qwen3 系），.env 三行切换（已文档化，2026-07-03 实际踩坑）
+- 真实案例（D1 验收发现）：VHIS 保障表页「(等候期：300日)」是个别保障项的标注，表格拍平后被引用为整体等待期 → R9 VLM 表格解析的直接依据；评测集 table 题型必须覆盖此页
+- Qwen3-Reranker 分数分布与 bge 不同：分红实现率类无据问题 top 分 0.498，拒答阈值 0.3 偏低 → D5 在评测集上校准（LLM 有据拒答检测已兜底）
+- 国际站 API RTT 较高：embedding 单查询 ~1.5s，P95<5s 目标偏紧 → 可选优化：查询 embedding 缓存、rerank 并行、或换国内站

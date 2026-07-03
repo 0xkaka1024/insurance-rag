@@ -83,9 +83,9 @@ config = {
 | PDF 解析 | pdfplumber 文本提取 + 双栏检测分栏提取（v1 必做：简介类 PDF 多为双栏排版，默认阅读顺序左右交错）；检测到表格或提取质量差的页 → Qwen-VL 转 Markdown（P1） | 条款 PDF 多为文字版，全量 VLM 贵且慢；纯文本表格必乱。注意 AIA 香港条款常为繁体中文/中英双语，解析后统一做繁简归一 |
 | 切片 | ① fixed：递归固定长度 512 token、15% 重叠（baseline）② structural：层级感知切分——优先匹配「第X章/第X条/编号」，无编号语料（产品简介）按章节标题切分；过长条目二次切分 | structural 保住条目/章节语义完整性（避免"核辐射免责被切碎"类问题）；两者对比正是 Playground 卖点 |
 | 增强 | P0：元数据（产品名/章/条号/页码/繁简归一后文本）P1：HyQE——每 chunk 由 LLM 生成 2-3 个口语化假设问题一并 embedding | 元数据是引用溯源与过滤检索的基础；HyQE 解决"用户口语 vs 条款书面语"的语义鸿沟。关键词抽取不做（BM25 已覆盖），文档摘要放 P2 |
-| Embedding | bge-m3（经 SiliconFlow API 调用；本地开发可选本地跑） | 多语言（应对繁中/英文混排）、中文效果好；API 化让部署容器保持轻量。DeepSeek 无 embedding 服务，故外配 |
+| Embedding | bge-m3（SiliconFlow 国内站）；国际站账号用 Qwen/Qwen3-Embedding-0.6B（2026-07 实际启用：国际站无 bge 系，.env 切换 base 与模型） | 多语言（应对繁中/英文混排）、中文效果好；API 化让部署容器保持轻量。DeepSeek 无 embedding 服务，故外配 |
 | 索引/检索 | ChromaDB(HNSW) + BM25(jieba, rank_bm25) 双路，RRF 融合(k=60) | Chroma pip 即装、文件持久化、零运维，demo 规模完全够；Milvus 需 Docker 三容器，作为生产迁移路径写入 Roadmap。BM25 兜住精确术语匹配（产品名、条号、专有名词） |
-| Rerank | bge-reranker-v2-m3，经 SiliconFlow API（本地 cross-encoder 作开发备选） | cross-encoder 精度显著高于 bi-encoder 粗排；API 化避免免费部署平台内存装不下模型 |
+| Rerank | bge-reranker-v2-m3（SiliconFlow 国内站）；国际站用 Qwen/Qwen3-Reranker-0.6B（同一 /rerank 协议，零代码切换） | cross-encoder 精度显著高于 bi-encoder 粗排；API 化避免免费部署平台内存装不下模型 |
 | 生成 | DeepSeek-chat 为主，Qwen-plus 作对比维度；prompt 强制引用格式；检索 top1 分数低于阈值 → 拒答模板 | DeepSeek 便宜且国内直连；两家均 OpenAI 兼容接口，`core/llm.py` 一个工厂函数切换 |
 | Query 预处理 | 术语归一（同义词表）+ 规则意图路由（P0）；多轮改写、HyDE（P1） | 路由是防幻觉第一道闸门：保费类数值问题现阶段一律拒答并引导（v2 接计划书查表工具） |
 | 评测 | RAGAS（faithfulness / answer_relevancy / context_precision / context_recall）+ 自定义拒答准确率 | RAGAS 是行业通用语言；拒答题 RAGAS 不覆盖，需自定义指标 |

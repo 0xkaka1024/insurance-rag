@@ -28,7 +28,7 @@
 
 ## 技术栈速记
 
-Python 3.11 · FastAPI + SSE · ChromaDB + rank_bm25(jieba) + RRF · rerank/embedding 走 SiliconFlow API（备选 DashScope，.env 切换）· LLM: DeepSeek（对比 qwen-plus）· 评测 RAGAS（judge 用 DeepSeek，需显式配置）· 部署 HF Spaces 单容器
+Python 3.11 · FastAPI + SSE · ChromaDB + rank_bm25(jieba) + RRF · rerank/embedding 走 SiliconFlow API（**国内站 bge-m3/bge-reranker；国际站 cloud.siliconflow.com 无 bge 系，用 Qwen3-Embedding/Qwen3-Reranker，key 互不通用，.env 切 base 与模型**；备选 DashScope）· LLM: DeepSeek（对比 qwen-plus）· 评测 RAGAS（judge 用 DeepSeek，需显式配置）· 部署 HF Spaces 单容器
 
 ## 语言注意
 
