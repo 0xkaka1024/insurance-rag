@@ -40,7 +40,7 @@ class FakeLLM:
 def test_build_user_prompt_contains_chunks_and_question():
     prompt = build_user_prompt([_chunk("等待期为90天。")], "等待期多少天？")
     assert "等待期为90天。" in prompt
-    assert "（Demo 第3页）" in prompt
+    assert "[1]（Demo·第3页）" in prompt
     assert "等待期多少天？" in prompt
 
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
 from app.core.llm import LLMClient
+from app.rag.citations import Citation, render_citations
 from app.rag.preprocess import REFUSAL_PREMIUM, route
 from app.rag.reranker import RerankClient, RerankUnavailable
 from app.rag.retriever import RetrievedChunk, Retriever
@@ -36,6 +37,8 @@ REFUSAL_NO_CONTEXT = "知识库中没有可用的条款资料，无法回答。�
 SYSTEM_PROMPT = (
     "你是保险条款问答助手，服务对象是保险代理人。"
     "只能依据【条款片段】中的内容回答问题，禁止编造或使用片段之外的知识。"
+    "每个事实论断的句末必须标注来源片段编号，格式如 [1]，多个来源写作 [1][2]；"
+    "只允许引用已提供的编号，禁止编造编号。"
     "如果片段中没有足够依据，直接回答：根据现有条款资料无法回答该问题。"
 )
 
@@ -47,7 +50,8 @@ def build_user_prompt(chunks: list[RetrievedChunk], question: str) -> str:
             loc = f"第{c.page_start}页"
         else:
             loc = f"第{c.page_start}-{c.page_end}页"
-        parts.append(f"[{i}] （{c.product} {loc}）\n{c.text}")
+        head = f"{c.product}·{c.section}·{loc}" if c.section else f"{c.product}·{loc}"
+        parts.append(f"[{i}]（{head}）\n{c.text}")
     parts.append(f"\n【问题】\n{question}")
     return "\n\n".join(parts)
 
@@ -59,8 +63,9 @@ class AskResult:
     timings: dict[str, float]
     config: RagConfig
     refused: bool = False
-    refuse_reason: str = ""  # low_score | no_context |（D3 路由）premium_intent
+    refuse_reason: str = ""  # premium_intent | low_score | no_context
     rerank_degraded: bool = False
+    citations: list[Citation] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
 
 
@@ -136,10 +141,15 @@ class RagPipeline:
             if not degraded and chunks and chunks[0].score < s.refuse_threshold:
                 refused, refuse_reason, answer = True, "low_score", REFUSAL_LOW_SCORE
 
+        citations: list[Citation] = []
         if not refused:
             t2 = perf_counter()
-            answer = self._llm.complete(SYSTEM_PROMPT, build_user_prompt(chunks, question))
+            raw = self._llm.complete(SYSTEM_PROMPT, build_user_prompt(chunks, question))
+            answer, citations = render_citations(raw, chunks)
             timings["generate_ms"] = round((perf_counter() - t2) * 1000, 1)
+            if not citations:
+                # 非拒答回答不带任何有效引用：红线告警，评测统计 citations==[]
+                logger.warning("answer without citations", extra={"extra_fields": {}})
 
         timings["total_ms"] = round((perf_counter() - t0) * 1000, 1)
         top_score = chunks[0].score if chunks else None
@@ -164,4 +174,5 @@ class RagPipeline:
             refused=refused,
             refuse_reason=refuse_reason,
             rerank_degraded=degraded,
+            citations=citations,
         )

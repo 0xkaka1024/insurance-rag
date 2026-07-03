@@ -27,6 +27,13 @@ class ChunkOut(BaseModel):
     page_start: int
     page_end: int
     score: float
+    section: str = ""
+
+
+class CitationOut(BaseModel):
+    index: int
+    label: str
+    chunk_id: str
 
 
 class AskResponse(BaseModel):
@@ -37,6 +44,7 @@ class AskResponse(BaseModel):
     refused: bool
     refuse_reason: str
     rerank_degraded: bool
+    citations: list[CitationOut]
 
 
 @lru_cache
@@ -68,4 +76,5 @@ def ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]
         refused=result.refused,
         refuse_reason=result.refuse_reason,
         rerank_degraded=result.rerank_degraded,
+        citations=[CitationOut(**vars(c)) for c in result.citations],
     )

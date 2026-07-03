@@ -20,6 +20,11 @@ class RetrievedChunk:
     page_start: int
     page_end: int
     score: float
+    section: str = ""  # 条号（structural 条款模式）或章节标题（简介模式），fixed 无
+
+
+def _section_of(meta: dict) -> str:
+    return str(meta.get("clause") or meta.get("section") or "")
 
 
 class Retriever:
@@ -71,6 +76,7 @@ class Retriever:
                     page_start=int(meta["page_start"]),
                     page_end=int(meta["page_end"]),
                     score=1.0 - dist,  # chroma cosine distance = 1 - 相似度
+                    section=_section_of(meta),
                 )
             )
         return chunks
@@ -83,7 +89,12 @@ class Retriever:
         payload: dict[str, tuple[str, dict]] = {
             c.chunk_id: (
                 c.text,
-                {"product": c.product, "page_start": c.page_start, "page_end": c.page_end},
+                {
+                    "product": c.product,
+                    "page_start": c.page_start,
+                    "page_end": c.page_end,
+                    "section": c.section,
+                },
             )
             for c in vec
         }
@@ -103,6 +114,7 @@ class Retriever:
                     page_start=int(meta["page_start"]),
                     page_end=int(meta["page_end"]),
                     score=round(score, 6),
+                    section=_section_of(meta),
                 )
             )
         return out
