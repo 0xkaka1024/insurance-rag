@@ -50,6 +50,23 @@ def test_upsert_replaces_same_id(tmp_path):
     assert idx.search("等待期", k=1)[0][1] == "新内容关于等待期。"
 
 
+def test_delete_by_product_removes_and_persists(tmp_path):
+    idx = BM25Index(tmp_path, "fixed")
+    idx.upsert([_chunk(0, "等待期为90天。"), _chunk(1, "住院现金保障。")])
+    other = Chunk(chunk_id="Other:fixed:0000", product="Other", strategy="fixed",
+                  text="其他产品条款。", page_start=1, page_end=1)
+    idx.upsert([other])
+
+    assert idx.delete_by_product("Demo") == 2
+    assert len(idx) == 1
+    assert idx.search("等待期", k=5) == []  # Demo 的内容检索不到了
+
+    reloaded = BM25Index(tmp_path, "fixed")  # 删除已持久化
+    assert len(reloaded) == 1
+    assert reloaded.search("其他", k=1)[0][0] == "Other:fixed:0000"
+    assert idx.delete_by_product("Demo") == 0  # 幂等
+
+
 def test_empty_index_search(tmp_path):
     assert BM25Index(tmp_path, "fixed").search("等待期", k=5) == []
 

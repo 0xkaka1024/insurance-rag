@@ -33,6 +33,12 @@ class Indexer:
             self._bm25[strategy] = BM25Index(self._index_dir, strategy)
         return self._bm25[strategy]
 
+    def purge_product(self, product: str, strategies: tuple[str, ...] = ("fixed", "structural")):
+        """清除某产品在两套存储中的全部块（重入库前清场，杜绝旧版条款残留）。"""
+        for strategy in strategies:
+            self.collection(strategy).delete(where={"product": product})
+            self.bm25(strategy).delete_by_product(product)
+
     def index(self, chunks: list[Chunk], embedder: EmbeddingClient) -> int:
         if not chunks:
             return 0

@@ -74,10 +74,14 @@ def test_whitelisted_products_pass():
 class RecordingIndexer:
     def __init__(self):
         self.indexed: list[str] = []
+        self.purged: list[str] = []
 
     def index(self, chunks, embedder) -> int:
         self.indexed.extend(c.chunk_id for c in chunks)
         return len(chunks)
+
+    def purge_product(self, product: str, strategies=("fixed", "structural")) -> None:
+        self.purged.append(product)
 
 
 class NullEmbedder:
@@ -145,6 +149,40 @@ def test_reingest_skipped_by_hash_and_forced(tmp_path):
         force=True, fingerprints=fp,
     )
     assert forced["ingested"] == ["newVHISmedical-tc.pdf"]
+
+
+def test_reingest_shrinking_file_leaves_no_stale_chunks(tmp_path):
+    """清场式重入库：新版块数少于旧版时，尾部旧 chunk 必须消失（真索引验证）。"""
+    from app.core.config import Settings
+    from app.ingest.indexer import Indexer
+
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days. " * 60))  # 长文本 → 多块
+    settings = Settings(_env_file=None, index_dir=tmp_path / "index")
+    indexer = Indexer(settings)
+    ingest_files([good], indexer=indexer, embedder=NullEmbedder(), settings=settings,
+                 fingerprints=_fp(good))
+    n_v1 = indexer.collection("fixed").count()
+    assert n_v1 > 1
+
+    good.write_bytes(make_pdf("Waiting period is 30 days."))  # 新版大幅缩短
+    ingest_files([good], indexer=indexer, embedder=NullEmbedder(), settings=settings,
+                 fingerprints=_fp(good))
+    n_v2 = indexer.collection("fixed").count()
+    assert n_v2 < n_v1  # 旧尾块被清场，而非永久残留
+    assert len(indexer.bm25("fixed")) == n_v2  # 双存储一致
+    texts = indexer.collection("fixed").get(include=["documents"])["documents"]
+    assert all("30 days" in t for t in texts)  # 无任何旧版内容
+    assert all("90 days" not in t for t in texts)
+
+
+def test_ingest_purges_product_before_indexing(tmp_path):
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days."))
+    indexer = RecordingIndexer()
+    ingest_files([good], indexer=indexer, embedder=NullEmbedder(),
+                 settings=_settings(tmp_path), fingerprints=_fp(good))
+    assert indexer.purged == ["newVHISmedical"]
 
 
 def test_ingest_writes_corpus_report(tmp_path):

@@ -80,10 +80,13 @@ def ingest_files(
             skipped.append(path.name)
             continue
         pages = parse_pdf(path)
-        by_strategy: dict[str, list[Chunk]] = {}
-        for chunker in chunkers:
-            chunks = chunker.split(pages)
-            by_strategy[chunker.name] = chunks
+        by_strategy: dict[str, list[Chunk]] = {ch.name: ch.split(pages) for ch in chunkers}
+        # 清场式重入库（红线）：先删该产品旧块再写，新版块数少于旧版时
+        # 尾部旧 chunk 不再残留（残留会引用已废止条款）。
+        # 注：purge 与 index 之间无事务，embedding 失败会短暂缺该产品——
+        # 蓝绿索引切换在 backlog（G4 collection 版本 manifest）。
+        indexer.purge_product(product_from_filename(path))
+        for chunks in by_strategy.values():
             indexed_chunks += indexer.index(chunks, embedder)
         save_report(
             build_report(

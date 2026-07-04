@@ -74,6 +74,23 @@ class BM25Index:
                 self._metas.append(meta)
                 self._tokens.append(tokens)
         self._rebuild()
+        self._save()
+
+    def delete_by_product(self, product: str) -> int:
+        """删除某产品的全部条目（清场式重入库用），返回删除数。"""
+        keep = [i for i, m in enumerate(self._metas) if m.get("product") != product]
+        removed = len(self._ids) - len(keep)
+        if not removed:
+            return 0
+        self._ids = [self._ids[i] for i in keep]
+        self._texts = [self._texts[i] for i in keep]
+        self._metas = [self._metas[i] for i in keep]
+        self._tokens = [self._tokens[i] for i in keep]
+        self._rebuild()
+        self._save()
+        return removed
+
+    def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_bytes(
             pickle.dumps(
