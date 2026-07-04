@@ -100,13 +100,41 @@ def penalized_means(means: dict, n_scored: int, n_answerable: int) -> dict:
     }
 
 
+def _gold_span(row: dict) -> tuple[str, int, int] | None:
+    """金标位置：候选题生成时记录的 (source_product, source_pages)。
+
+    用「产品 + 页码区间重叠」而非 chunk_id 相等判命中：chunk_id 绑定切片
+    策略与语料版本（重建索引 seq 全变），页码金标对 fixed/structural 一视同仁。
+    """
+    product, pages = row.get("source_product"), row.get("source_pages")
+    if not product or not pages:
+        return None
+    start, _, end = str(pages).partition("-")
+    try:
+        p0 = int(start)
+        p1 = int(end) if end else p0
+    except ValueError:
+        return None
+    return str(product), p0, p1
+
+
+def _overlaps(chunk, gold: tuple[str, int, int]) -> bool:
+    product, p0, p1 = gold
+    return chunk.product == product and chunk.page_start <= p1 and chunk.page_end >= p0
+
+
 def evaluate_config(
     pipeline: RagPipeline,
     cfg: RagConfig,
     rows: list[dict],
     llm_model: str = "deepseek-chat",
 ) -> dict:
-    """逐题跑 pipeline，产出 RAGAS 输入 records 与拒答/误拒/成本/耗时指标。"""
+    """逐题跑 pipeline，产出 RAGAS 输入 records 与拒答/误拒/命中/成本/耗时指标。
+
+    retrieval_hit / citation_hit 是不依赖 judge 的确定性指标：零成本、
+    可逐 commit 回归，度量「检索到没有」与「引用的位置对不对」——后者
+    正是 RAGAS faithfulness 不覆盖的合规命门（内容对但页码张冠李戴不扣分）。
+    """
     price = PRICE_PER_MTOK.get(llm_model, {"in": 0.0, "out": 0.0})
     records: list[dict] = []
     refusal_hits = 0
@@ -117,7 +145,8 @@ def evaluate_config(
     t0 = time.perf_counter()
     for row in rows:
         result = pipeline.ask(row["question"], cfg)
-        if row["type"] in REFUSE_TYPES:
+        is_refuse_type = row["type"] in REFUSE_TYPES
+        if is_refuse_type:
             refusal_total += 1
             refusal_hits += int(result.refused)
         else:
@@ -126,6 +155,15 @@ def evaluate_config(
         usage = result.meta.get("usage", {})
         cost += usage.get("prompt_tokens", 0) / 1e6 * price["in"]
         cost += usage.get("completion_tokens", 0) / 1e6 * price["out"]
+
+        gold = None if is_refuse_type else _gold_span(row)
+        retrieval_hit = citation_hit = None
+        cited_ids = [c.chunk_id for c in result.citations]
+        if gold:
+            retrieval_hit = any(_overlaps(c, gold) for c in result.chunks)
+            if not result.refused:
+                cited = [c for c in result.chunks if c.chunk_id in set(cited_ids)]
+                citation_hit = any(_overlaps(c, gold) for c in cited)
         records.append(
             {
                 "question": row["question"],
@@ -136,10 +174,16 @@ def evaluate_config(
                 "refused": result.refused,
                 "refuse_reason": result.refuse_reason,
                 "citations": len(result.citations),
+                "retrieved_chunk_ids": [c.chunk_id for c in result.chunks],
+                "cited_chunk_ids": cited_ids,
+                "retrieval_hit": retrieval_hit,
+                "citation_hit": citation_hit,
                 "timings": result.timings,
             }
         )
     n_scored = sum(1 for r in records if scorable(r))
+    r_hits = [r["retrieval_hit"] for r in records if r["retrieval_hit"] is not None]
+    c_hits = [r["citation_hit"] for r in records if r["citation_hit"] is not None]
     return {
         "config": cfg.model_dump(),
         "records": records,
@@ -148,6 +192,9 @@ def evaluate_config(
         "false_refusal_rate": round(false_refusals / n_answerable, 4) if n_answerable else None,
         "n_answerable": n_answerable,
         "n_scored": n_scored,
+        "n_gold": len(r_hits),
+        "retrieval_hit_rate": round(sum(r_hits) / len(r_hits), 4) if r_hits else None,
+        "citation_hit_rate": round(sum(c_hits) / len(c_hits), 4) if c_hits else None,
         "cost_cny": round(cost, 4),
         "duration_s": round(time.perf_counter() - t0, 2),
     }

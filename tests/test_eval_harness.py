@@ -136,6 +136,51 @@ def test_scorable_excludes_refused_error_and_refuse_types():
     assert not scorable({"type": "fact", "refused": False, "error": "boom"})
 
 
+class GoldAwarePipeline(FakePipeline):
+    """作答时引用返回的 chunk（Demo 第1页），供金标命中断言。"""
+
+    def ask(self, question: str, cfg: RagConfig) -> AskResult:
+        from app.rag.citations import Citation
+
+        result = super().ask(question, cfg)
+        if not result.refused:
+            result.citations = [Citation(index=1, label="Demo-第1页", chunk_id="Demo:fixed:0000")]
+        return result
+
+
+def test_gold_hit_metrics_by_page_overlap():
+    rows = [
+        {"question": "等待期多少天", "type": "fact", "ground_truth": "90天",
+         "source_product": "Demo", "source_pages": "1-1"},  # 命中（chunk 在 Demo P1）
+        {"question": "限额多少", "type": "fact", "ground_truth": "100万",
+         "source_product": "Demo", "source_pages": "5-6"},  # 检回的 P1 不覆盖金标页
+        {"question": "无金标的题", "type": "fact", "ground_truth": "x"},
+        {"question": "30岁多少钱", "type": "unanswerable"},  # 拒答题不参与命中
+    ]
+    entry = evaluate_config(GoldAwarePipeline(), RagConfig(), rows)
+    recs = entry["records"]
+    assert recs[0]["retrieval_hit"] is True
+    assert recs[0]["citation_hit"] is True
+    assert recs[1]["retrieval_hit"] is False
+    assert recs[1]["citation_hit"] is False
+    assert recs[2]["retrieval_hit"] is None  # 无金标 → 不计入分母
+    assert recs[3]["retrieval_hit"] is None
+    assert entry["n_gold"] == 2
+    assert entry["retrieval_hit_rate"] == 0.5
+    assert entry["citation_hit_rate"] == 0.5
+    assert recs[0]["retrieved_chunk_ids"] == ["Demo:fixed:0000"]
+    assert recs[0]["cited_chunk_ids"] == ["Demo:fixed:0000"]
+
+
+def test_gold_span_single_page_and_garbage():
+    from eval.harness import _gold_span
+
+    assert _gold_span({"source_product": "P", "source_pages": "3"}) == ("P", 3, 3)
+    assert _gold_span({"source_product": "P", "source_pages": "3-5"}) == ("P", 3, 5)
+    assert _gold_span({"source_product": "P", "source_pages": "x-y"}) is None
+    assert _gold_span({"source_pages": "3"}) is None  # 缺产品
+
+
 def test_result_filename_format():
     assert result_filename("20260703", "abc1234") == "20260703_abc1234.json"
 
