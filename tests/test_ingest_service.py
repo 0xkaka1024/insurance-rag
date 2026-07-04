@@ -231,6 +231,17 @@ def test_ingest_purges_product_before_indexing(tmp_path):
     assert indexer.purged == ["newVHISmedical"]
 
 
+def test_index_dir_has_no_tmp_residue_after_ingest(tmp_path):
+    """原子写：所有落盘走临时文件 + replace，成功后不留 *.tmp。"""
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days."))
+    settings = _settings(tmp_path)
+    ingest_files([good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings,
+                 fingerprints=_fp(good))
+    assert list(settings.index_dir.rglob("*.tmp")) == []
+    assert (settings.index_dir / "ingest_manifest.json").exists()
+
+
 def test_ingest_writes_corpus_report(tmp_path):
     good = tmp_path / "newVHISmedical-tc.pdf"
     good.write_bytes(make_pdf("Waiting period is 90 days."))

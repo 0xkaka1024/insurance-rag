@@ -37,7 +37,9 @@ def _load_manifest(path: Path) -> dict[str, str]:
 
 def _save_manifest(path: Path, manifest: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+    tmp.replace(path)  # 原子替换：损坏的 manifest 会让所有后续入库不可用
 
 
 def ingest_files(

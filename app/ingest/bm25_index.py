@@ -92,12 +92,13 @@ class BM25Index:
 
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_bytes(
-            pickle.dumps(
-                {"ids": self._ids, "texts": self._texts, "metas": self._metas,
-                 "tokens": self._tokens}
-            )
+        payload = pickle.dumps(
+            {"ids": self._ids, "texts": self._texts, "metas": self._metas,
+             "tokens": self._tokens}
         )
+        tmp = self._path.with_suffix(".pkl.tmp")
+        tmp.write_bytes(payload)
+        tmp.replace(self._path)  # 原子替换：写一半崩溃不会留下损坏的 pickle 拖垮启动
 
     def search(self, query: str, k: int) -> list[tuple[str, str, dict, float]]:
         """返回 [(chunk_id, text, meta, score)]，按 BM25 分数降序。"""

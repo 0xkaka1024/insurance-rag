@@ -84,7 +84,7 @@
 - [x] 白名单加内容指纹：产品名 + 文件 sha256 双因子准入（governance.FINGERPRINTS 登记制）；deny 归一化匹配防重命名；`Indexer.index()` 入口二次断言 product ∈ 白名单
 - [x] 清场式重入库：按 product 先删后写（Chroma delete + BM25 delete_by_product），杜绝旧版条款残留；补"块数收缩"单测
 - [x] ingest 失败通道：单文件异常不炸批、0 页解析记 failed 不写 manifest、failed 列表 + 非零 exit code
-- [ ] 索引落盘原子化：BM25 pickle / manifest 走临时文件 + os.replace
+- [x] 索引落盘原子化：BM25 pickle / manifest 走临时文件 + os.replace
 
 ### G2 评测闭环（P0：跑出第一份可信结果前不对外报数字）
 

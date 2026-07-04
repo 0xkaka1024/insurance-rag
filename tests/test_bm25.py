@@ -40,6 +40,7 @@ def test_persistence_roundtrip(tmp_path):
     reloaded = BM25Index(tmp_path, "fixed")
     assert len(reloaded) == 1
     assert reloaded.search("等待期", k=1)[0][0] == "Demo:fixed:0000"
+    assert list(tmp_path.glob("*.tmp")) == []  # 原子写不留临时文件
 
 
 def test_upsert_replaces_same_id(tmp_path):
