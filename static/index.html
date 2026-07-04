@@ -538,19 +538,30 @@ const Eval = {
     if (!name) return;
     const data = await (await fetch("/eval_results/" + encodeURIComponent(name))).json();
     const metrics = data.requested_metrics || [];
-    const head = ["切片", "检索", "重排", ...metrics, "拒答准确率", "成本(¥)", "耗时(s)"];
+    const fmt = x => (x == null ? "—" : String(x));
+    const head = ["切片", "检索", "重排", ...metrics,
+                  "拒答准确率", "误拒率", "作答", "hit", "引用中", "成本(¥)", "耗时(s)"];
     const rows = (data.configs || []).map(e => {
-      const c = e.config, m = e.metrics || {};
+      const c = e.config, m = e.metrics || {}, mp = e.metrics_penalized || {};
+      const metricCells = metrics.map(k => {
+        if (m[k] == null) return "—";
+        const p = mp[k];  // 惩罚后均值：误拒题计 0 分，堵"拒答藏题"的博弈
+        return p != null && p !== m[k] ? `${m[k]} / ${p}` : String(m[k]);
+      });
       const cells = [c.chunking, c.retrieval, c.rerank ? "开" : "关",
-        ...metrics.map(k => m[k] == null ? "—" : m[k]),
-        e.refusal_accuracy == null ? "—" : e.refusal_accuracy,
-        e.cost_cny, e.duration_s];
+        ...metricCells,
+        fmt(e.refusal_accuracy), fmt(e.false_refusal_rate),
+        e.n_scored != null ? `${e.n_scored}/${e.n_answerable}` : "—",
+        fmt(e.retrieval_hit_rate), fmt(e.citation_hit_rate),
+        fmt(e.cost_cny), fmt(e.duration_s)];
       return `<tr>${cells.map(x => `<td style="padding:6px 10px;border-top:1px solid var(--line)">${esc(String(x))}</td>`).join("")}</tr>`;
     }).join("");
     document.getElementById("eval-table").innerHTML = `
       <p class="muted">run_at ${esc(data.run_at || "")} · git ${esc(data.git || "")}
-        · ${data.n_questions || 0} 题 · 总成本 ¥${data.total_cost_cny}
-        · 总耗时 ${data.total_duration_s}s</p>
+        ${data.partial ? '<span class="badge warn">partial · 未跑完的中间结果</span>' : ""}
+        · ${data.n_questions || 0} 题 · 总成本 ¥${fmt(data.total_cost_cny)}
+        · 总耗时 ${fmt(data.total_duration_s)}s
+        · 指标格式：作答均值 / 惩罚后（误拒计0）</p>
       <div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px">
         <tr>${head.map(h => `<th style="text-align:left;padding:6px 10px">${esc(h)}</th>`).join("")}</tr>
         ${rows}

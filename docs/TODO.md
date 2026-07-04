@@ -89,12 +89,12 @@
 
 ### G2 评测闭环（P0：跑出第一份可信结果前不对外报数字）
 
-- [ ] 修 harness 幸存者偏差：误拒题不踢出打分池；新增 false_refusal_rate 与 n_scored/n_answerable
-- [ ] records 落盘 retrieved/cited chunk_id；新增 retrieval_hit@k / citation_hit_rate（用 source_chunk_id 金标）
-- [ ] judge 与被评模型解耦：独立 judge_model/judge_base_url 配置；PRICE 表查不到告警而非静默 0
-- [ ] 逐题容错 + 每配置立即落盘 + `--limit` 冒烟；结果文件加时分秒防覆盖、记录 dirty/语料指纹/逐题分数
-- [ ] 人工核对 ground_truth 定稿 dataset.jsonl：强制类型配额、comparison 题人工写、补跨产品混淆类对抗拒答题
-- [ ] 跑通 8 配置全量评测，第一份结果入 git
+- [x] 修 harness 幸存者偏差：误拒题显性入账（false_refusal_rate、n_scored/n_answerable、metrics_penalized 误拒计0）；逐题 RAGAS 分数回填 records 支持两次运行逐题 diff
+- [x] records 落盘 retrieved/cited chunk_id；新增 retrieval_hit_rate / citation_hit_rate（金标按「产品+页码重叠」判定，跨切片策略公平、语料重建后仍有效）
+- [x] judge 与被评模型解耦：judge_model/judge_base_url/judge_api_key 独立配置并记入结果；PRICE 表查不到 → 告警 + cost 记 None
+- [x] 逐题容错（error 字段不进分母）+ 每配置立即落盘（partial 标记）+ `--limit`/`--dry-run` 冒烟；文件名加时分秒、git hash 带 -dirty、payload 记模型/阈值/数据集 sha/语料指纹
+- [ ] **（人工，kaka 约半天）** 定稿 dataset.jsonl：`python eval/build_dataset.py` 出草稿（配额+跨产品对抗题+comparison 模板已内置）→ 逐条对照 PDF 原文核对 ground_truth → 删 needs_review 改名 dataset.jsonl（loader 强制门禁，未核对跑不了）
+- [ ] 跑通 8 配置全量评测（约 ¥5-10），第一份结果入 git；顺手校准 refuse_threshold 与 vector_floor
 
 ### G3 公开部署前（P0/P1）
 
