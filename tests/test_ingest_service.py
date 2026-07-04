@@ -157,7 +157,10 @@ def test_reingest_shrinking_file_leaves_no_stale_chunks(tmp_path):
     from app.ingest.indexer import Indexer
 
     good = tmp_path / "newVHISmedical-tc.pdf"
-    good.write_bytes(make_pdf("Waiting period is 90 days. " * 60))  # 长文本 → 多块
+    # 多行 spec（单超长行会画出页面边界被裁掉）：14 行 ≈ 650+ 字符 → 多个 fixed 块
+    lines = [(72, 740 - i * 20, f"Waiting period is 90 days for plan number {i}.")
+             for i in range(14)]
+    good.write_bytes(make_pdf(lines))
     settings = Settings(_env_file=None, index_dir=tmp_path / "index")
     indexer = Indexer(settings)
     ingest_files([good], indexer=indexer, embedder=NullEmbedder(), settings=settings,

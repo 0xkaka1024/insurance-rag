@@ -59,7 +59,8 @@ def test_delete_by_product_removes_and_persists(tmp_path):
 
     assert idx.delete_by_product("Demo") == 2
     assert len(idx) == 1
-    assert idx.search("等待期", k=5) == []  # Demo 的内容检索不到了
+    # Demo 的内容检索不到了（BM25 对零分文档仍返回占位，故断言 id 而非空列表）
+    assert all(cid.startswith("Other") for cid, *_ in idx.search("等待期", k=5))
 
     reloaded = BM25Index(tmp_path, "fixed")  # 删除已持久化
     assert len(reloaded) == 1
