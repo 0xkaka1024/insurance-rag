@@ -24,6 +24,8 @@ ALL_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context
 
 # 期望拒答的题型（种子题模板用 unanswerable，兼容简写 refuse）
 REFUSE_TYPES = frozenset({"unanswerable", "refuse"})
+# 合法题型全集（SPEC R6 五类）：拼写错误的 type 会静默逃过拒答统计，必须白名单校验
+DATASET_TYPES = frozenset({"fact", "synthesis", "table", "comparison"}) | REFUSE_TYPES
 
 # DeepSeek 定价（CNY / 1M tokens，2026-07 官网价，调价请更新此表）
 PRICE_PER_MTOK = {"deepseek-chat": {"in": 2.0, "out": 8.0}}
@@ -52,6 +54,16 @@ def load_dataset(path: Path) -> list[dict]:
         row = json.loads(line)
         if "question" not in row or "type" not in row:
             raise ValueError(f"{path}:{i} 缺少 question/type 字段")
+        if row["type"] not in DATASET_TYPES:
+            raise ValueError(
+                f"{path}:{i} 未知题型 '{row['type']}'，可选 {sorted(DATASET_TYPES)}"
+            )
+        if row.get("needs_review"):
+            # 人工核对门禁（红线）：未经核对的 ground_truth 跑出的数字不可对外
+            raise ValueError(
+                f"{path}:{i} 仍标记 needs_review：ground_truth 未经人工核对。"
+                "对照 PDF 原文核对后删除该字段再运行（流程见 eval/build_dataset.py）。"
+            )
         rows.append(row)
     if not rows:
         raise ValueError(f"{path} 为空数据集")

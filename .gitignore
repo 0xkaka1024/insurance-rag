@@ -7,3 +7,4 @@ __pycache__/
 .claude/
 eval/candidates.jsonl
 eval/candidates.csv
+eval/dataset.draft.jsonl
