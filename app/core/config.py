@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     prod_retrieval: str = "hybrid"
     prod_rerank: bool = True
 
+    # 解析：表格页/低质量页 VLM 转 Markdown（SPEC R9，P1）。
+    # 开关只声明意图；开着却未注入 VLM 客户端时 ingest 直接报错，不静默降级
+    # （表格页拍平入库是事实性误引源头，宁可失败也不能假装转写过）。
+    parse_vlm_fallback: bool = False
+
     # 检索参数
     top_k: int = 5
     recall_k: int = 20

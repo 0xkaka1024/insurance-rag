@@ -72,6 +72,7 @@
 ## D7-D8：Buffer + 消化
 
 - [ ] P1 择优：HyQE > LLM 对比 > VLM 表格解析 > 多轮改写（按此优先级，做不完就砍）
+  - [x] VLM 表格解析框架先行（2026-07-03）：表格页/cid 低质量页检测打标、`parse_pdf` 可注入 vlm 接口缝、`parse_vlm_fallback` 开关（开而未注入客户端即报错）、报告记录 `vlm_fallback` 归因与 `table_pages_flat` 红旗清单；剩余：接 DashScope Qwen-VL 真实客户端 + 转写结果本地缓存 + 表格题子集 before/after 评测
 - [ ] **逐行读懂全部代码**，对照自测清单模拟面试：RRF 的 k 为什么 60？rerank 为何用 cross-encoder？拒答阈值怎么定的？chunk 512 token 依据？RAGAS faithfulness 怎么算的？Chroma HNSW 参数含义？
 - [ ] 答不上的问题回头补原理，补完记录进 docs/QA.md
 

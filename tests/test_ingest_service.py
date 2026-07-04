@@ -2,9 +2,11 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from app.ingest.parser import product_from_filename
 from app.ingest.service import check_ingestable, ingest_files, rebuild_reports
-from tests.pdf_fixture import make_pdf
+from tests.pdf_fixture import make_pdf, table_grid
 
 
 def _fp(*paths: Path) -> dict[str, frozenset[str]]:
@@ -272,6 +274,57 @@ def test_rebuild_reports_writes_report_without_indexing(tmp_path):
     assert len(result["rejected"]) == 1  # 治理校验对报告同样生效
     assert (settings.index_dir / "reports" / "newVHISmedical.json").exists()
     assert not (settings.index_dir / "chroma").exists()  # 未触碰索引
+
+
+def _table_pdf() -> bytes:
+    return make_pdf({"texts": [(80.0, 680.0, "Benefit waiting 300 days")], "lines": table_grid()})
+
+
+def test_vlm_flag_without_client_fails_loud(tmp_path):
+    """开关声明启用 VLM fallback 却未注入客户端 → 报错，不静默拍平表格入库。"""
+    from app.core.config import Settings
+
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days."))
+    settings = Settings(_env_file=None, index_dir=tmp_path / "index", parse_vlm_fallback=True)
+
+    with pytest.raises(ValueError, match="parse_vlm_fallback"):
+        ingest_files([good], indexer=RecordingIndexer(), embedder=NullEmbedder(),
+                     settings=settings, fingerprints=_fp(good))
+    with pytest.raises(ValueError, match="parse_vlm_fallback"):
+        rebuild_reports([good], settings=settings, fingerprints=_fp(good))
+
+
+def test_ingest_with_vlm_records_attribution_in_report(tmp_path):
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(_table_pdf())
+    settings = _settings(tmp_path)
+    ingest_files([good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings,
+                 fingerprints=_fp(good), vlm=lambda page: "| Benefit | 300 days waiting |")
+
+    report = json.loads(
+        (settings.index_dir / "reports" / "newVHISmedical.json").read_text(encoding="utf-8")
+    )
+    assert report["vlm_fallback"] is True
+    assert report["table_pages_flat"] == []  # 表格页已转写，无红旗
+    assert report["pages"][0]["has_table"] is True
+    assert report["pages"][0]["vlm_used"] is True
+
+
+def test_ingest_without_vlm_red_flags_flattened_table_pages(tmp_path):
+    """未启用 VLM 时表格页照常入库（现状），但报告必须亮红旗可追查。"""
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(_table_pdf())
+    settings = _settings(tmp_path)
+    ingest_files([good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings,
+                 fingerprints=_fp(good))
+
+    report = json.loads(
+        (settings.index_dir / "reports" / "newVHISmedical.json").read_text(encoding="utf-8")
+    )
+    assert report["vlm_fallback"] is False
+    assert report["table_pages_flat"] == [1]
+    assert report["pages"][0]["vlm_used"] is False
 
 
 def test_changed_file_reingested(tmp_path):

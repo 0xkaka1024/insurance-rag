@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from app.ingest.parser import normalize, parse_pdf, product_from_filename
-from tests.pdf_fixture import make_pdf
+from app.ingest.parser import _is_low_quality, normalize, parse_pdf, product_from_filename
+from tests.pdf_fixture import make_pdf, table_grid
 
 
 def test_normalize_traditional_to_simplified():
@@ -33,3 +33,62 @@ def test_parse_pdf_skips_blank_pages(tmp_path):
     pdf = tmp_path / "Blank.pdf"
     pdf.write_bytes(make_pdf(" "))
     assert parse_pdf(pdf) == []
+
+
+def _table_page(text: str = "Benefit waiting 300 days") -> dict:
+    """带真实网格线的页：pdfplumber find_tables 能检出，非 mock。"""
+    return {"texts": [(80.0, 680.0, text)], "lines": table_grid()}
+
+
+def test_parse_pdf_flags_table_page(tmp_path):
+    pdf = tmp_path / "Demo.pdf"
+    pdf.write_bytes(make_pdf(_table_page(), "plain text page"))
+    pages = parse_pdf(pdf)
+    assert pages[0].has_table is True
+    assert pages[1].has_table is False
+    assert not any(p.vlm_used for p in pages)  # 未注入 vlm 只打标记，不改文本
+
+
+def test_parse_pdf_vlm_rewrites_flagged_pages_only(tmp_path):
+    pdf = tmp_path / "Demo.pdf"
+    pdf.write_bytes(make_pdf(_table_page(), "plain text page"))
+    calls: list[int] = []
+
+    def fake_vlm(page):
+        calls.append(page.page_number)
+        return "| 保障 | 等候期 |\n| 危疾 | 300日（確診後起計） |"
+
+    pages = parse_pdf(pdf, vlm=fake_vlm)
+    assert calls == [1]  # 纯文本页不调 VLM，不花冤枉钱
+    assert pages[0].vlm_used is True
+    assert pages[0].raw_text.startswith("| 保障 |")  # 引用展示也基于转写结果
+    assert "确诊" in pages[0].text  # 繁简归一照常作用于 VLM 输出
+    assert pages[1].vlm_used is False
+    assert "plain text page" in pages[1].text
+
+
+def test_parse_pdf_vlm_failure_falls_back_to_plumber_text(tmp_path):
+    pdf = tmp_path / "Demo.pdf"
+    pdf.write_bytes(make_pdf(_table_page()))
+
+    def boom(page):
+        raise RuntimeError("api down")
+
+    pages = parse_pdf(pdf, vlm=boom)
+    assert len(pages) == 1  # 调用失败页不丢
+    assert pages[0].vlm_used is False
+    assert "Benefit" in pages[0].text  # 回退 pdfplumber 文本
+    assert pages[0].has_table is True  # 红旗保留，报告可见
+
+
+def test_parse_pdf_vlm_empty_result_falls_back(tmp_path):
+    pdf = tmp_path / "Demo.pdf"
+    pdf.write_bytes(make_pdf(_table_page()))
+    pages = parse_pdf(pdf, vlm=lambda page: "  ")
+    assert pages[0].vlm_used is False
+    assert "Benefit" in pages[0].text
+
+
+def test_low_quality_detection_by_cid_placeholder():
+    assert _is_low_quality("(cid:123) (cid:456)")
+    assert not _is_low_quality("等候期为90天。")

@@ -101,6 +101,8 @@ def _page_records(pages: list[Page]) -> list[dict]:
                 "chars": len(p.text),
                 "cjk_ratio": round(cjk / len(nonspace), 3) if nonspace else 0.0,
                 "two_column": p.two_column,
+                "has_table": p.has_table,
+                "vlm_used": p.vlm_used,
             }
         )
     return out
@@ -113,6 +115,7 @@ def build_report(
     total_pages: int,
     pages: list[Page],
     chunks_by_strategy: dict[str, list[Chunk]],
+    vlm_fallback: bool = False,
 ) -> dict:
     strategies: dict[str, dict] = {}
     for strategy, chunks in chunks_by_strategy.items():
@@ -137,6 +140,10 @@ def build_report(
         "total_pages": total_pages,
         "parsed_pages": len(pages),
         "empty_pages": sorted(set(range(1, total_pages + 1)) - parsed_nos),
+        # VLM fallback 是否启用（评测归因用）；table_pages_flat 是红旗清单：
+        # 检出表格却按文本流拍平入库的页（VHIS「等候期：300日」误引即此类）
+        "vlm_fallback": vlm_fallback,
+        "table_pages_flat": sorted(p.page_no for p in pages if p.has_table and not p.vlm_used),
         "pages": _page_records(pages),
         "strategies": strategies,
     }

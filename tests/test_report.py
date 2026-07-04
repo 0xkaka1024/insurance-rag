@@ -80,3 +80,23 @@ def test_build_report_coverage_flag_counts_and_empty_pages():
     assert report["strategies"]["structural"]["flag_counts"]["no_clause"] == 1
     assert "clause_coverage" not in report["strategies"]["fixed"]
     assert report["strategies"]["fixed"]["n_chunks"] == 0
+    assert report["vlm_fallback"] is False  # 未传参默认：未启用，可归因
+
+
+def test_build_report_vlm_attribution_and_flat_table_red_flags():
+    pages = [
+        Page(product="Demo", page_no=1, text="表格页拍平文本", raw_text="表格頁", has_table=True),
+        Page(product="Demo", page_no=2, text="| 已转写 |", raw_text="| 已轉寫 |",
+             has_table=True, vlm_used=True),
+        Page(product="Demo", page_no=3, text="普通文本页。", raw_text="普通文本頁。"),
+    ]
+    report = build_report(
+        product="Demo", filename="Demo_tc.pdf", sha256="ab12", total_pages=3,
+        pages=pages, chunks_by_strategy={}, vlm_fallback=True,
+    )
+    assert report["vlm_fallback"] is True
+    assert report["table_pages_flat"] == [1]  # 有表格且未转写的页才是红旗
+    assert report["pages"][0]["has_table"] is True
+    assert report["pages"][0]["vlm_used"] is False
+    assert report["pages"][1]["vlm_used"] is True
+    assert report["pages"][2]["has_table"] is False
