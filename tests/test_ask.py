@@ -55,10 +55,18 @@ def test_pipeline_ask_returns_answer_chunks_timings():
     assert "等待期为90天。" in user
 
 
-def test_ask_endpoint(monkeypatch):
-    app.dependency_overrides[get_pipeline] = lambda: RagPipeline(FakeRetriever(), FakeLLM())
+def test_ask_endpoint_uses_locked_production_config():
+    """生产入口 /ask：调用方传什么 config 都被忽略，安全开关服务端锁定。"""
+    retriever = FakeRetriever()
+    app.dependency_overrides[get_pipeline] = lambda: RagPipeline(retriever, FakeLLM())
     try:
-        resp = client.post("/ask", json={"question": "等待期多少天？"})
+        resp = client.post(
+            "/ask",
+            json={
+                "question": "等待期多少天？",
+                "config": {"chunking": "fixed", "retrieval": "vector", "rerank": False},
+            },
+        )
     finally:
         app.dependency_overrides.clear()
     assert resp.status_code == 200
@@ -68,19 +76,21 @@ def test_ask_endpoint(monkeypatch):
     assert body["timings"]["total_ms"] >= 0
     assert "retrieval_rank" in body["chunks"][0]  # 溯源字段随 API 透出（未填时为 null）
     assert body["config"] == {
-        "chunking": "fixed",
-        "retrieval": "vector",
-        "rerank": False,
-    }  # 默认配置回显
+        "chunking": "structural",
+        "retrieval": "hybrid",
+        "rerank": True,
+    }  # 锁定的生产配置回显，客户端请求的 config 被忽略
+    assert retriever.calls == [{"strategy": "structural", "mode": "hybrid"}]
+    assert body["rerank_degraded"] is True  # 测试管线无 reranker → 降级不中断
     assert body["refused"] is False
 
 
-def test_ask_endpoint_routes_config_to_retriever():
+def test_playground_ask_routes_config_to_retriever():
     retriever = FakeRetriever()
     app.dependency_overrides[get_pipeline] = lambda: RagPipeline(retriever, FakeLLM())
     try:
         resp = client.post(
-            "/ask",
+            "/playground/ask",
             json={
                 "question": "等待期多少天？",
                 "config": {"chunking": "structural", "retrieval": "hybrid"},
@@ -97,9 +107,9 @@ def test_ask_endpoint_routes_config_to_retriever():
     assert retriever.calls == [{"strategy": "structural", "mode": "hybrid"}]
 
 
-def test_ask_endpoint_rejects_unknown_config_value():
+def test_playground_ask_rejects_unknown_config_value():
     resp = client.post(
-        "/ask", json={"question": "q", "config": {"retrieval": "quantum"}}
+        "/playground/ask", json={"question": "q", "config": {"retrieval": "quantum"}}
     )
     assert resp.status_code == 422
 

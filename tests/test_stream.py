@@ -29,7 +29,9 @@ class StreamingLLM:
 
 
 def _pipeline() -> RagPipeline:
-    return RagPipeline(FakeRetriever([_chunk()]), StreamingLLM(), FakeReranker(), SETTINGS)
+    # /ask 生产配置 rerank=on：FakeReranker 需返回有效精排对，空对会清空 chunks
+    reranker = FakeReranker(pairs=[(0, 0.9)])
+    return RagPipeline(FakeRetriever([_chunk()]), StreamingLLM(), reranker, SETTINGS)
 
 
 def test_ask_stream_event_sequence():

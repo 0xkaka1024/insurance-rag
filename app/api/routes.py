@@ -178,12 +178,36 @@ def configs() -> dict:
         "chunking": list(get_args(fields["chunking"].annotation)),
         "retrieval": list(get_args(fields["retrieval"].annotation)),
         "rerank": [False, True],
+        "production": _production_config().model_dump(),  # /ask 锁定的生产配置
     }
 
 
-def _sse(pipeline: RagPipeline, req: AskRequest):
-    for event, data in pipeline.ask_stream(req.question, req.config):
+def _production_config() -> RagConfig:
+    s = get_settings()
+    return RagConfig(chunking=s.prod_chunking, retrieval=s.prod_retrieval, rerank=s.prod_rerank)
+
+
+def _sse(pipeline: RagPipeline, question: str, config: RagConfig):
+    for event, data in pipeline.ask_stream(question, config):
         yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _serve_ask(pipeline: RagPipeline, req: AskRequest, config: RagConfig):
+    if req.stream:
+        return StreamingResponse(
+            _sse(pipeline, req.question, config), media_type="text/event-stream"
+        )
+    result = pipeline.ask(req.question, config)
+    return AskResponse(
+        answer=result.answer,
+        chunks=[ChunkOut(**vars(c)) for c in result.chunks],
+        timings=result.timings,
+        config=result.config,
+        refused=result.refused,
+        refuse_reason=result.refuse_reason,
+        rerank_degraded=result.rerank_degraded,
+        citations=[CitationOut(**vars(c)) for c in result.citations],
+    )
 
 
 @router.post("/retrieve", response_model=RetrieveResponse)
@@ -203,16 +227,14 @@ def retrieve(req: RetrieveRequest, pipeline: Annotated[RagPipeline, Depends(get_
 
 @router.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]):
-    if req.stream:
-        return StreamingResponse(_sse(pipeline, req), media_type="text/event-stream")
-    result = pipeline.ask(req.question, req.config)
-    return AskResponse(
-        answer=result.answer,
-        chunks=[ChunkOut(**vars(c)) for c in result.chunks],
-        timings=result.timings,
-        config=result.config,
-        refused=result.refused,
-        refuse_reason=result.refuse_reason,
-        rerank_degraded=result.rerank_degraded,
-        citations=[CitationOut(**vars(c)) for c in result.citations],
-    )
+    """生产问答入口：config 服务端锁定（红线：安全相关开关不由调用方决定）。
+
+    请求体中的 config 字段被忽略（保留以兼容旧客户端）；实验切换走 /playground/ask。
+    """
+    return _serve_ask(pipeline, req, _production_config())
+
+
+@router.post("/playground/ask", response_model=AskResponse)
+def playground_ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]):
+    """Playground 实验入口：honor 调用方 config，用于策略对照与调参。"""
+    return _serve_ask(pipeline, req, req.config)

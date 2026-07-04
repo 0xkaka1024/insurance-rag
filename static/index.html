@@ -270,12 +270,12 @@ function showView(name) {
   document.querySelector(`nav button[data-view="${name}"]`).click();
 }
 
-/* ---------- SSE 解析 ---------- */
-async function askStream(question, config, handlers) {
+/* ---------- SSE 解析（生产入口 /ask：config 服务端锁定，不随请求发送） ---------- */
+async function askStream(question, handlers) {
   const resp = await fetch("/ask", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, config, stream: true }),
+    body: JSON.stringify({ question, stream: true }),
   });
   if (!resp.ok) throw new Error("HTTP " + resp.status);
   const reader = resp.body.getReader();
@@ -313,7 +313,7 @@ const Chat = {
     const live = holder.querySelector("[data-role=live]");
     let chunksData = null;
     try {
-      await askStream(q, readConfig(document.getElementById("chat-config")), {
+      await askStream(q, {
         chunks: d => { chunksData = d; },
         delta: d => { live.textContent += d.text; },
         final: d => { holder.replaceWith(wrapFinal(q, d, chunksData)); },
@@ -348,7 +348,7 @@ const Playground = {
         const out = document.getElementById(outId);
         out.innerHTML = '<p class="muted">运行中…</p>';
         try {
-          const resp = await fetch(retrieveOnly ? "/retrieve" : "/ask", {
+          const resp = await fetch(retrieveOnly ? "/retrieve" : "/playground/ask", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ question: q, config: readConfig(document.getElementById(cfgId)) }),
@@ -560,16 +560,21 @@ const Eval = {
 
 /* ---------- 初始化 ---------- */
 (async () => {
+  let prod = { chunking: "structural", retrieval: "hybrid", rerank: true };
   try {
     const resp = await fetch("/configs");
-    if (resp.ok) DIMS = await resp.json();
+    if (resp.ok) {
+      const body = await resp.json();
+      if (body.production) prod = body.production;
+      DIMS = { chunking: body.chunking, retrieval: body.retrieval, rerank: body.rerank };
+    }
   } catch (e) { /* 用内置默认 */ }
-  renderConfig(document.getElementById("chat-config"),
-               { chunking: "structural", retrieval: "hybrid", rerank: true });  // 聊天默认最优
+  // 问答视图不再提供 config 选择：/ask 由服务端锁定（安全开关不进请求体）
+  document.getElementById("chat-config").innerHTML =
+    `<span class="muted">生产配置（服务端锁定）：${esc(prod.chunking)} · ${esc(prod.retrieval)} · rerank ${prod.rerank ? "开" : "关"}　—　自由切换请用 Playground</span>`;
   renderConfig(document.getElementById("pg-config-a"),
                { chunking: "fixed", retrieval: "vector", rerank: false });      // baseline
-  renderConfig(document.getElementById("pg-config-b"),
-               { chunking: "structural", retrieval: "hybrid", rerank: true });  // 最优
+  renderConfig(document.getElementById("pg-config-b"), prod);                  // 生产同款
   Eval.init();
   Corpus.init();
 })();

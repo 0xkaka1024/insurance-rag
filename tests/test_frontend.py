@@ -33,3 +33,8 @@ def test_configs_endpoint_matches_rag_config():
     assert body["chunking"] == ["fixed", "structural"]
     assert body["retrieval"] == ["vector", "hybrid"]
     assert body["rerank"] == [False, True]
+    assert body["production"] == {
+        "chunking": "structural",
+        "retrieval": "hybrid",
+        "rerank": True,
+    }  # /ask 锁定的生产配置，前端问答视图展示用
