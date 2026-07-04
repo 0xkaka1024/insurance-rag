@@ -75,6 +75,53 @@
 - [ ] **逐行读懂全部代码**，对照自测清单模拟面试：RRF 的 k 为什么 60？rerank 为何用 cross-encoder？拒答阈值怎么定的？chunk 512 token 依据？RAGAS faithfulness 怎么算的？Chroma HNSW 参数含义？
 - [ ] 答不上的问题回头补原理，补完记录进 docs/QA.md
 
+## 生产化 Backlog（2026-07-03 全面 review 产出，背景与证据见 docs/REVIEW-2026-07.md）
+
+### G1 红线加固（P0：可信机制必须不可绕过）
+
+- [ ] 空引用即拒发：非拒答且 citations==[] 时服务端替换为拒答话术；无效引用编号计数进日志指标（pipeline.py / citations.py）
+- [ ] 默认配置拒答兜底：vector/RRF 模式各设保守阈值；生产入口锁定安全 config，自由切换移到 Playground 专用端点
+- [ ] 白名单加内容指纹：产品名 + 文件 sha256 双因子准入；`Indexer.index()` 入口二次断言 product ∈ 白名单
+- [ ] 清场式重入库：按 product 先删后写（Chroma delete + BM25 delete_by_product），杜绝旧版条款残留；补"块数收缩"单测
+- [ ] ingest 失败通道：单文件异常不炸批、0 页解析记 failed 不写 manifest、failed 列表 + 非零 exit code
+- [ ] 索引落盘原子化：BM25 pickle / manifest 走临时文件 + os.replace
+
+### G2 评测闭环（P0：跑出第一份可信结果前不对外报数字）
+
+- [ ] 修 harness 幸存者偏差：误拒题不踢出打分池；新增 false_refusal_rate 与 n_scored/n_answerable
+- [ ] records 落盘 retrieved/cited chunk_id；新增 retrieval_hit@k / citation_hit_rate（用 source_chunk_id 金标）
+- [ ] judge 与被评模型解耦：独立 judge_model/judge_base_url 配置；PRICE 表查不到告警而非静默 0
+- [ ] 逐题容错 + 每配置立即落盘 + `--limit` 冒烟；结果文件加时分秒防覆盖、记录 dirty/语料指纹/逐题分数
+- [ ] 人工核对 ground_truth 定稿 dataset.jsonl：强制类型配额、comparison 题人工写、补跨产品混淆类对抗拒答题
+- [ ] 跑通 8 配置全量评测，第一份结果入 git
+
+### G3 公开部署前（P0/P1）
+
+- [ ] 鉴权 + 限流 + LLM max_tokens + 每日成本熔断（短期 HF Space 设 private 止血）
+- [ ] SSE error 事件协议 + 全局异常 handler（JSON 含 request_id）+ 前端错误态与 resp.ok 检查
+- [ ] lifespan 启动校验索引 fail-fast；/ready 深检（collection>0、BM25 存在、key 已配）与 /health 分离
+- [ ] rerank 独立短超时（3-5s、重试≤1）+ 简单熔断；rerank 响应越界 index 防御性过滤
+- [ ] 依赖全量 lock（uv pip compile）入 git；CI 加 pip-audit / coverage 门槛 / docker build / gitleaks
+
+### G4 Playground 增强（实验平台体验，详见 REVIEW 第"Playground 优化方案"节）
+
+- [ ] 检索透明化：RetrievedChunk 携带各路 rank/score（vector/BM25/粗排/rerank），前端逐 chunk 展示与位次变化
+- [ ] 只检索模式：/retrieve 端点不调 LLM，Playground 加开关（调优迭代亚秒级、零生成成本）
+- [ ] chunk 浏览器 + ingest 静态报告：页级解析质量、切片边界叠加视图（双策略并排）、条号主轨覆盖率指标
+- [ ] 参数进 Playground config：top_k/recall_k/refuse_threshold/RRF k（生产端点锁定）；延迟瀑布 + token 成本展示
+- [ ] 案例保存：对比结果一键存档 → gen_eval_candidates 导入通道；评测表下钻回放
+- [ ] 解析多方案预览先行：pdfplumber(不分栏)/pymupdf/Qwen-VL 同页 diff，胜者才建 collection
+- [ ] collection 命名/版本 manifest：入库配置+语料版本 → collection 显式映射（解析维度与评测语料指纹的共同前置）
+
+### G5 上线后与企业化
+
+- [ ] 审计日志（Q/A/引用/用户/模型版本持久化，采样与脱敏策略）+ /feedback 反馈端点
+- [ ] async 化外呼 + 并发上限背压；/metrics Prometheus 指标（拒答率/降级率/p95/成本）
+- [ ] raw_text 链路修复：引用展示繁体原文；opencc t2s → hk2s；UI 标注"以保单繁体原文为准"
+- [ ] 检索 product 过滤与 query 产品消歧（多产品混淆防线）
+- [ ] live 冒烟测试（pytest -m live，CI 排除）；中文端到端 PDF fixture；conftest 隔离 index_dir
+- [ ] 条款版本/生效日期元数据模型；SSO/RBAC/多租户（企业落地前置）
+
 ## 降级预案（进度落后时按序砍）
 
 1. 砍 P1 全部（HyQE/VLM/LLM 对比/多轮改写）
