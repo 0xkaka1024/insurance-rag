@@ -1,3 +1,13 @@
+---
+title: Insurance RAG
+emoji: 🛡️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # insurance-rag：保险条款智能问答（引用溯源 + 拒答 + 策略 Playground）
 
 [![CI](https://github.com/0xkaka1024/insurance-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/0xkaka1024/insurance-rag/actions/workflows/ci.yml)
