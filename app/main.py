@@ -1,19 +1,39 @@
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api import routes
 from app.api.routes import router
+from app.core.config import get_settings
 from app.core.logging import request_id_var, setup_logging
 
 setup_logging()
 logger = logging.getLogger("app")
 
-app = FastAPI(title="insurance-rag")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动即自检索引（顺带 eager 预热 Indexer，首个请求不再冷启动）。
+    settings = get_settings()
+    result = routes.probe_readiness(settings, routes.get_indexer())
+    if result["index_ok"]:
+        logger.info("index ready at startup", extra={"extra_fields": result})
+    else:
+        logger.critical("index NOT ready at startup", extra={"extra_fields": result})
+        if settings.startup_require_index:
+            raise RuntimeError(f"索引未就绪，拒绝启动（STARTUP_REQUIRE_INDEX=true）：{result}")
+    if not result["keys_ok"]:
+        logger.warning("api keys not fully configured", extra={"extra_fields": result["keys"]})
+    yield
+
+
+app = FastAPI(title="insurance-rag", lifespan=lifespan)
 app.include_router(router)
 
 _STATIC = Path(__file__).resolve().parent.parent / "static"

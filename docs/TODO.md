@@ -100,7 +100,7 @@
 
 - [ ] 鉴权 + 限流 + LLM max_tokens + 每日成本熔断（短期 HF Space 设 private 止血）
 - [ ] SSE error 事件协议 + 全局异常 handler（JSON 含 request_id）+ 前端错误态与 resp.ok 检查
-- [ ] lifespan 启动校验索引 fail-fast；/ready 深检（collection>0、BM25 存在、key 已配）与 /health 分离
+- [x] lifespan 启动校验索引 fail-fast（STARTUP_REQUIRE_INDEX，Dockerfile 置 true）；/ready 深检（collection>0、BM25 存在、key 已配）与 /health 浅活分离；HEALTHCHECK 改打 /ready
 - [ ] rerank 独立短超时（3-5s、重试≤1）+ 简单熔断；rerank 响应越界 index 防御性过滤
 - [ ] 依赖全量 lock（uv pip compile）入 git；CI 加 pip-audit / coverage 门槛 / docker build / gitleaks
 

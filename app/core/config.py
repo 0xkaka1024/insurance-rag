@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     request_timeout_s: float = 30.0
     max_retries: int = 3
 
+    # 启动自检：为 true 时索引未就绪（collection 空 / BM25 缺）直接 fail-fast，
+    # 容器起不来（部署平台显性报错），而非静默把所有问题拒答。
+    # 本地/CI 默认 false（测试不需要真实索引）；生产镜像在 Dockerfile 里置 true。
+    startup_require_index: bool = False
+
     # 治理：Indexer.index() 入口的白名单二次断言（纵深防御）。
     # 仅测试非白名单夹具产品时置 False，生产不得关闭。
     whitelist_enforce_at_index: bool = True

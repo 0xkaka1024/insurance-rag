@@ -87,9 +87,46 @@ def get_indexer() -> Indexer:
         return Indexer(get_settings())
 
 
+def probe_readiness(settings, indexer) -> dict:
+    """深度就绪探针：两套 collection 非空 + BM25 pkl 存在 + 关键 key 已配。
+
+    索引缺失时检索静默返回空、全部问题走「礼貌拒答」，监控看一切正常——
+    这个探针把它变成显性信号（docs/REVIEW-2026-07.md P0-3）。index_ok 供启动
+    fail-fast 用；ready 额外含 key（缺 key 是响亮的 500，不是静默失败）。
+    """
+    details: dict = {"strategies": {}}
+    index_ok = True
+    try:
+        for strategy in ("fixed", "structural"):
+            count = indexer.collection(strategy).count()
+            bm25 = (settings.index_dir / f"bm25_{strategy}.pkl").exists()
+            details["strategies"][strategy] = {"chunks": count, "bm25": bm25}
+            index_ok = index_ok and count > 0 and bm25
+    except Exception as exc:  # noqa: BLE001 - 探针不能自爆，异常即视为未就绪
+        details["error"] = repr(exc)
+        index_ok = False
+    keys = {
+        "deepseek": bool(settings.deepseek_api_key),
+        "siliconflow": bool(settings.siliconflow_api_key),
+    }
+    details["keys"] = keys
+    keys_ok = all(keys.values())
+    return {"ready": index_ok and keys_ok, "index_ok": index_ok, "keys_ok": keys_ok, **details}
+
+
 @router.get("/health")
 def health() -> dict:
+    """浅活探针：进程起来就返回 ok（不查索引/依赖，供负载均衡判存活）。"""
     return {"status": "ok"}
+
+
+@router.get("/ready")
+def ready(indexer: Annotated[Indexer, Depends(get_indexer)]) -> dict:
+    """深就绪探针：索引与 key 齐备才 200，否则 503（供部署门禁与监控）。"""
+    result = probe_readiness(get_settings(), indexer)
+    if not result["ready"]:
+        raise HTTPException(status_code=503, detail=result)
+    return result
 
 
 @router.get("/corpus")
