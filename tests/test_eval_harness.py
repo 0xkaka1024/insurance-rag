@@ -188,8 +188,57 @@ def test_gold_span_single_page_and_garbage():
     assert _gold_span({"source_pages": "3"}) is None  # 缺产品
 
 
-def test_result_filename_format():
-    assert result_filename("20260703", "abc1234") == "20260703_abc1234.json"
+def test_result_filename_includes_time():
+    # 含时分秒：同日同 commit 的第二次运行不再静默覆盖第一次
+    assert result_filename("20260703", "142530", "abc1234") == "20260703_142530_abc1234.json"
+
+
+class FlakyPipeline(FakePipeline):
+    """第二题抛异常：批次必须继续，且出错题不进任何指标分母。"""
+
+    def __init__(self):
+        self.n = 0
+
+    def ask(self, question: str, cfg: RagConfig) -> AskResult:
+        self.n += 1
+        if self.n == 2:
+            raise TimeoutError("upstream timeout")
+        return super().ask(question, cfg)
+
+
+def test_per_question_error_does_not_abort_batch():
+    rows = [
+        {"question": "等待期多少天", "type": "fact", "ground_truth": "90"},
+        {"question": "会炸的题", "type": "fact", "ground_truth": "x"},
+        {"question": "30岁多少钱", "type": "unanswerable"},
+    ]
+    entry = evaluate_config(FlakyPipeline(), RagConfig(), rows)
+    assert entry["errors"] == 1
+    assert len(entry["records"]) == 3  # 出错题保留占位 record（可事后排查）
+    assert "TimeoutError" in entry["records"][1]["error"]
+    assert entry["n_answerable"] == 1  # 出错题不算作答机会，不稀释误拒率
+    assert entry["refusal_accuracy"] == 1.0  # 第三题照常评
+
+
+def test_corpus_fingerprint_reads_reports(tmp_path):
+    from app.core.config import Settings
+    from eval.harness import corpus_fingerprint, dataset_sha256
+
+    settings = Settings(_env_file=None, index_dir=tmp_path / "index")
+    reports = tmp_path / "index" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "Demo.json").write_text(json.dumps({
+        "product": "Demo", "sha256": "abcdef1234567890",
+        "strategies": {"fixed": {"n_chunks": 12}, "structural": {"n_chunks": 9}},
+    }), encoding="utf-8")
+
+    fp = corpus_fingerprint(settings)
+    assert fp == {"Demo": {"sha8": "abcdef12", "chunks": {"fixed": 12, "structural": 9}}}
+
+    ds = tmp_path / "d.jsonl"
+    ds.write_text('{"question":"q","type":"fact"}\n', encoding="utf-8")
+    assert len(dataset_sha256(ds)) == 12
+    assert dataset_sha256(ds) == dataset_sha256(ds)  # 稳定指纹
 
 
 def test_save_result_roundtrip(tmp_path):

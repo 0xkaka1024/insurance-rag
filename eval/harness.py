@@ -6,6 +6,7 @@
 - --metrics 支持只跑无需 ground_truth 的子集（faithfulness / answer_relevancy）
 """
 
+import hashlib
 import itertools
 import json
 import logging
@@ -144,10 +145,29 @@ def evaluate_config(
     refusal_total = 0
     n_answerable = 0
     false_refusals = 0
+    errors = 0
     cost = 0.0
     t0 = time.perf_counter()
     for row in rows:
-        result = pipeline.ask(row["question"], cfg)
+        # 逐题容错：400 次真金调用的批次不能被一次限流/超时整场作废；
+        # 出错题记 error 字段（不进任何指标分母），批次继续
+        try:
+            result = pipeline.ask(row["question"], cfg)
+        except Exception as exc:
+            logger.exception("eval question failed: %s", row["question"][:30])
+            errors += 1
+            records.append(
+                {
+                    "question": row["question"], "type": row["type"],
+                    "answer": "", "contexts": [],
+                    "ground_truth": row.get("ground_truth", ""),
+                    "refused": False, "refuse_reason": "", "citations": 0,
+                    "retrieved_chunk_ids": [], "cited_chunk_ids": [],
+                    "retrieval_hit": None, "citation_hit": None,
+                    "timings": {}, "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            continue
         is_refuse_type = row["type"] in REFUSE_TYPES
         if is_refuse_type:
             refusal_total += 1
@@ -196,6 +216,7 @@ def evaluate_config(
         "false_refusal_rate": round(false_refusals / n_answerable, 4) if n_answerable else None,
         "n_answerable": n_answerable,
         "n_scored": n_scored,
+        "errors": errors,
         "n_gold": len(r_hits),
         "retrieval_hit_rate": round(sum(r_hits) / len(r_hits), 4) if r_hits else None,
         "citation_hit_rate": round(sum(c_hits) / len(c_hits), 4) if c_hits else None,
@@ -280,19 +301,44 @@ def score_with_ragas(records: list[dict], metrics: list[str], settings: Settings
 
 
 def git_short_hash() -> str:
+    """短 hash；工作区有未提交改动时带 -dirty 后缀（结果不可假装来自干净 commit）。"""
     try:
-        return (
-            subprocess.run(
-                ["git", "rev-parse", "--short", "HEAD"],
-                capture_output=True, text=True, check=True,
-            ).stdout.strip()
-        )
+        h = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        return f"{h}-dirty" if dirty else h
     except Exception:  # noqa: BLE001 - 无 git 环境（如容器内）用占位
         return "nogit"
 
 
-def result_filename(date_str: str, git_hash: str) -> str:
-    return f"{date_str}_{git_hash}.json"
+def result_filename(date_str: str, time_str: str, git_hash: str) -> str:
+    """含时分秒：同日同 commit 多次运行不再互相覆盖。"""
+    return f"{date_str}_{time_str}_{git_hash}.json"
+
+
+def dataset_sha256(path: Path) -> str:
+    """数据集内容指纹（短）：结果文件只记路径会在题库悄悄变化后误导对比。"""
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+
+
+def corpus_fingerprint(settings: Settings) -> dict:
+    """语料指纹：来自 ingest 质量报告。语料重建后跑分，结果必须能看出差别。"""
+    from app.ingest.report import reports_dir
+
+    d = reports_dir(settings)
+    out: dict[str, dict] = {}
+    for p in sorted(d.glob("*.json")) if d.is_dir() else []:
+        r = json.loads(p.read_text(encoding="utf-8"))
+        out[r.get("product", p.stem)] = {
+            "sha8": str(r.get("sha256", ""))[:8],
+            "chunks": {k: v.get("n_chunks") for k, v in r.get("strategies", {}).items()},
+        }
+    return out
 
 
 def save_result(results_dir: Path, filename: str, payload: dict) -> Path:
