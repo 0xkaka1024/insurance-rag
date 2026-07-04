@@ -51,6 +51,27 @@
   dialog::backdrop { background: rgba(0,0,0,.35); }
   .muted { color: var(--muted); font-size: 13px; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  /* 语料视图 */
+  .doc-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 8px 10px;
+             border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .doc-row:hover { background: #f3f4f6; }
+  .chip { font-size: 12px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
+          cursor: pointer; background: #fff; }
+  .chip.on { background: #eef2ff; border-color: var(--brand); color: var(--brand); font-weight: 600; }
+  button.chip { font-family: inherit; }
+  .cchunk { border: 1px solid var(--line); border-radius: 8px; margin-top: 8px; font-size: 13px; }
+  .cchunk .head { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 8px 10px; }
+  .cchunk .body { padding: 0 10px 8px; color: #374151; }
+  .cid { font-family: ui-monospace, monospace; font-size: 12px; background: #e1f5ee;
+         color: #085041; padding: 1px 7px; border-radius: 4px; }
+  .clause-tag { color: #0f6e56; font-weight: 600; }
+  .fbadge { font-size: 12px; padding: 1px 7px; border-radius: 4px;
+            background: var(--refuse-bg); color: var(--warn); }
+  .boundary { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 10px;
+              background: #fdecec; color: #991b1b; font-size: 12px;
+              border-top: 1px dashed #fca5a5; border-radius: 0 0 8px 8px; }
+  .boundary code { font-family: ui-monospace, monospace; }
+  .flash { outline: 2px solid var(--brand); }
 </style>
 </head>
 <body>
@@ -60,6 +81,7 @@
     <button data-view="chat" class="active">问答</button>
     <button data-view="playground">Playground 对照</button>
     <button data-view="eval">评测</button>
+    <button data-view="corpus">语料</button>
   </nav>
 </header>
 <main>
@@ -92,6 +114,19 @@
     <div class="cols">
       <div class="card"><b>配置 A</b><div class="row" id="pg-config-a"></div><div id="pg-out-a"></div></div>
       <div class="card"><b>配置 B</b><div class="row" id="pg-config-b"></div><div id="pg-out-b"></div></div>
+    </div>
+  </section>
+
+  <!-- 语料视图：解析/切片质量可观测（chunk 浏览器 + 边界质检红旗） -->
+  <section id="view-corpus" class="view">
+    <div class="card">
+      <div class="muted" style="margin-bottom:6px">入库文档总览 · 数据来自入库时生成的质量报告；
+        历史文件补报告：<code>python scripts/ingest.py data/raw --reports-only</code>（零成本，不调 embedding）</div>
+      <div id="corpus-docs"><p class="muted">加载中…</p></div>
+    </div>
+    <div class="card" id="corpus-browser" style="display:none">
+      <div class="row" id="corpus-toolbar"></div>
+      <div id="corpus-chunks"></div>
     </div>
   </section>
 
@@ -211,11 +246,28 @@ function resultCard(data, opts = {}) {
 function showChunk(chunkId) {
   const c = (window._chunkStore || {})[chunkId];
   if (!c) return;
-  document.getElementById("chunk-dialog-body").innerHTML = `
+  const body = document.getElementById("chunk-dialog-body");
+  body.innerHTML = `
     <div class="meta muted">${esc(c.chunk_id)} · ${esc(c.product)}
       ${c.section ? " · " + esc(c.section) : ""} · 第${c.page_start}页起</div>
     <p class="answer">${esc(c.text)}</p>`;
+  const [product, strategy] = String(chunkId).split(":");
+  if (product && strategy) {
+    const btn = document.createElement("button");
+    btn.className = "chip";
+    btn.textContent = "在语料中定位（看邻居块）";
+    btn.onclick = () => {
+      document.getElementById("chunk-dialog").close();
+      showView("corpus");
+      Corpus.open(product, strategy, chunkId);
+    };
+    body.appendChild(btn);
+  }
   document.getElementById("chunk-dialog").showModal();
+}
+
+function showView(name) {
+  document.querySelector(`nav button[data-view="${name}"]`).click();
 }
 
 /* ---------- SSE 解析 ---------- */
@@ -313,6 +365,156 @@ const Playground = {
   },
 };
 
+/* ---------- 语料视图：文档总览 → 切片浏览器（异常过滤 + 边界质检条） ---------- */
+const FLAG_LABELS = {
+  cut_midsentence: "截断疑似", merged_clauses: "吞并疑似",
+  no_clause: "无条号", overshort: "超短", overlong: "超长",
+};
+const FLAG_ORDER = ["cut_midsentence", "merged_clauses", "no_clause", "overshort", "overlong"];
+
+const Corpus = {
+  chunks: [], meta: {}, product: "", strategy: "structural", filter: "all", locate: null,
+
+  init: async () => {
+    const box = document.getElementById("corpus-docs");
+    try {
+      const { documents } = await (await fetch("/corpus")).json();
+      if (!documents.length) {
+        box.innerHTML = '<p class="muted">暂无报告，请先执行上方的 --reports-only 命令。</p>';
+        return;
+      }
+      box.innerHTML = "";
+      documents.forEach(d => {
+        const row = document.createElement("div");
+        row.className = "doc-row";
+        const st = d.strategies || {};
+        const cov = st.structural ? st.structural.clause_coverage : null;
+        const parts = [`<b>${esc(d.product)}</b>`,
+          `<span class="muted">${d.parsed_pages}/${d.total_pages} 页</span>`];
+        if ((d.empty_pages || []).length)
+          parts.push(`<span class="badge warn">空页 ${esc(d.empty_pages.join(","))}</span>`);
+        for (const [name, e] of Object.entries(st))
+          parts.push(`<span class="muted">${esc(name)} ${e.n_chunks} 块</span>`);
+        if (cov != null) {
+          const txt = `条号覆盖 ${(cov * 100).toFixed(0)}%`;
+          parts.push(`<span class="badge ${cov < 0.5 ? "warn" : "ok"}">${txt}</span>`);
+        }
+        row.innerHTML = parts.join(" ");
+        row.onclick = () => Corpus.open(d.product, Corpus.strategy);
+        box.appendChild(row);
+      });
+    } catch (e) {
+      box.innerHTML = `<p class="muted">加载失败：${esc(e.message)}</p>`;
+    }
+  },
+
+  open: async (product, strategy, locateId) => {
+    Corpus.product = product;
+    Corpus.strategy = strategy || "structural";
+    Corpus.filter = "all";
+    Corpus.locate = locateId || null;
+    document.getElementById("corpus-browser").style.display = "";
+    const out = document.getElementById("corpus-chunks");
+    out.innerHTML = '<p class="muted">加载中…</p>';
+    try {
+      const resp = await fetch(
+        `/corpus/${encodeURIComponent(product)}/chunks?strategy=${Corpus.strategy}`);
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      Corpus.meta = data;
+      Corpus.chunks = data.chunks || [];
+      Corpus.render();
+    } catch (e) {
+      out.innerHTML = `<p class="muted">加载失败：${esc(e.message)}（该策略可能未入库）</p>`;
+    }
+  },
+
+  render: () => {
+    const bar = document.getElementById("corpus-toolbar");
+    bar.innerHTML = "";
+    const covTxt = Corpus.meta.clause_coverage == null ? ""
+      : ` · 条号覆盖 ${(Corpus.meta.clause_coverage * 100).toFixed(0)}%`;
+    const title = document.createElement("span");
+    title.innerHTML = `<b>${esc(Corpus.product)}</b><span class="muted"> · ${Corpus.chunks.length} 块${covTxt}</span>`;
+    bar.appendChild(title);
+    ["fixed", "structural"].forEach(s => {
+      const chip = document.createElement("span");
+      chip.className = "chip" + (s === Corpus.strategy ? " on" : "");
+      chip.textContent = s;
+      chip.onclick = () => Corpus.open(Corpus.product, s);
+      bar.appendChild(chip);
+    });
+    const counts = Corpus.meta.flag_counts || {};
+    const filters = [["all", `全部 ${Corpus.chunks.length}`]];
+    FLAG_ORDER.forEach(f => { if (counts[f]) filters.push([f, `${FLAG_LABELS[f]} ${counts[f]}`]); });
+    filters.forEach(([f, label]) => {
+      const chip = document.createElement("span");
+      chip.className = "chip" + (f === Corpus.filter ? " on" : "");
+      chip.textContent = label;
+      chip.onclick = () => { Corpus.filter = f; Corpus.render(); };
+      bar.appendChild(chip);
+    });
+
+    const out = document.getElementById("corpus-chunks");
+    out.innerHTML = "";
+    const visible = Corpus.chunks.filter(
+      c => Corpus.filter === "all" || (c.flags || []).includes(Corpus.filter));
+    if (!visible.length) { out.innerHTML = '<p class="muted">无匹配块。</p>'; return; }
+    visible.forEach(c => {
+      const div = document.createElement("div");
+      div.className = "cchunk";
+      div.dataset.cid = c.chunk_id;
+      const loc = c.clause || c.section || "";
+      const pages = c.page_start === c.page_end ? `P${c.page_start}` : `P${c.page_start}-${c.page_end}`;
+      const flags = (c.flags || []).map(f => `<span class="fbadge">${esc(FLAG_LABELS[f] || f)}</span>`).join("");
+      const text = c.text || "";
+      const more = text.length > 120
+        ? `<details><summary>展开全文（${text.length} 字）</summary><div class="answer" style="margin-top:6px">${esc(text)}</div></details>`
+        : "";
+      div.innerHTML = `
+        <div class="head">
+          <span class="cid">#${esc(String(c.seq).padStart(4, "0"))}</span>
+          ${loc ? `<span class="clause-tag">${esc(loc)}</span>` : ""}
+          <span class="muted">${pages} · ${c.chars} 字</span>
+          ${flags}
+          <span style="margin-left:auto"></span>
+          <button class="chip" data-act="pg">去 Playground 检索</button>
+        </div>
+        <div class="body"><div>${esc(text.slice(0, 120))}${text.length > 120 ? "…" : ""}</div>${more}</div>`;
+      if (c.boundary && c.boundary.cut
+          && (Corpus.filter === "all" || Corpus.filter === "cut_midsentence")) {
+        const b = document.createElement("div");
+        b.className = "boundary";
+        b.innerHTML = `边界落在句中：<code>…${esc(c.boundary.tail)}</code> ‖ <code>${esc(c.boundary.next_head)}…</code>`;
+        div.appendChild(b);
+      }
+      out.appendChild(div);
+    });
+    if (Corpus.locate) {
+      const target = out.querySelector(`[data-cid="${CSS.escape(Corpus.locate)}"]`);
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        target.classList.add("flash");
+        setTimeout(() => target.classList.remove("flash"), 1600);
+      }
+      Corpus.locate = null;
+    }
+  },
+};
+
+// 「去 Playground 检索」事件委托：chunk 内容不进 HTML 属性，规避注入面
+document.getElementById("corpus-chunks").addEventListener("click", ev => {
+  const btn = ev.target.closest("button[data-act=pg]");
+  if (!btn) return;
+  const card = btn.closest(".cchunk");
+  const c = Corpus.chunks.find(x => x.chunk_id === card.dataset.cid);
+  if (!c) return;
+  const seed = (c.clause || c.section || c.text || "").split(/[。！？\n]/)[0].slice(0, 40);
+  document.getElementById("pg-q").value = seed;
+  showView("playground");
+  document.getElementById("pg-q").focus();
+});
+
 /* ---------- 评测表 ---------- */
 const Eval = {
   init: async () => {
@@ -369,6 +571,7 @@ const Eval = {
   renderConfig(document.getElementById("pg-config-b"),
                { chunking: "structural", retrieval: "hybrid", rerank: true });  // 最优
   Eval.init();
+  Corpus.init();
 })();
 </script>
 </body>
