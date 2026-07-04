@@ -1,8 +1,11 @@
 import json
 import logging
+import threading
+import time
 
 from fastapi.testclient import TestClient
 
+from app.api import routes
 from app.core.logging import JsonFormatter, request_id_var
 from app.main import app
 
@@ -23,6 +26,31 @@ def test_request_id_generated():
 def test_request_id_honors_inbound_header():
     resp = client.get("/health", headers={"x-request-id": "abc123"})
     assert resp.headers["x-request-id"] == "abc123"
+
+
+def test_get_pipeline_cold_start_builds_serially(monkeypatch):
+    """冷启动并发首请求不得并行构建 pipeline（chromadb 共享系统注册表非线程安全）。"""
+    active, max_active = 0, 0
+    gauge = threading.Lock()
+
+    def slow_build(settings):
+        nonlocal active, max_active
+        with gauge:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)  # 无串行化保护时，并发线程必然在此重叠
+        with gauge:
+            active -= 1
+        return object()
+
+    monkeypatch.setattr(routes, "build_pipeline", slow_build)
+    routes.get_pipeline.cache_clear()
+    threads = [threading.Thread(target=routes.get_pipeline) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert max_active == 1
 
 
 def test_json_formatter_emits_valid_json_with_request_id():

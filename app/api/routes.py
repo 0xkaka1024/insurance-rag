@@ -1,4 +1,5 @@
 import json
+import threading
 from functools import lru_cache
 from typing import Annotated
 
@@ -67,9 +68,15 @@ class AskResponse(BaseModel):
     citations: list[CitationOut]
 
 
+_build_lock = threading.Lock()
+
+
 @lru_cache
 def get_pipeline() -> RagPipeline:
-    return build_pipeline(get_settings())
+    # 冷启动时并发首请求（Playground 双配置并发）会竞态构建 Chroma 客户端，
+    # chromadb 共享系统注册表非线程安全（实测 KeyError/AttributeError），串行化规避。
+    with _build_lock:
+        return build_pipeline(get_settings())
 
 
 @router.get("/health")
