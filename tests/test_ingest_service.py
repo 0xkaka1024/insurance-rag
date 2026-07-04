@@ -1,6 +1,7 @@
+import json
 from pathlib import Path
 
-from app.ingest.service import check_ingestable, ingest_files
+from app.ingest.service import check_ingestable, ingest_files, rebuild_reports
 from tests.pdf_fixture import make_pdf
 
 
@@ -97,6 +98,37 @@ def test_reingest_skipped_by_hash_and_forced(tmp_path):
         force=True,
     )
     assert forced["ingested"] == ["newVHISmedical-tc.pdf"]
+
+
+def test_ingest_writes_corpus_report(tmp_path):
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days."))
+    settings = _settings(tmp_path)
+    ingest_files([good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings)
+
+    report_path = settings.index_dir / "reports" / "newVHISmedical.json"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert set(report["strategies"]) == {"fixed", "structural"}
+    assert report["parsed_pages"] >= 1
+    assert report["total_pages"] >= report["parsed_pages"]
+    assert report["strategies"]["structural"]["n_chunks"] >= 1
+    assert "clause_coverage" in report["strategies"]["structural"]
+
+
+def test_rebuild_reports_writes_report_without_indexing(tmp_path):
+    good = tmp_path / "newVHISmedical-tc.pdf"
+    good.write_bytes(make_pdf("Waiting period is 90 days."))
+    bad = tmp_path / "x - training deck.pdf"
+    bad.write_bytes(make_pdf("internal only"))
+    settings = _settings(tmp_path)
+
+    result = rebuild_reports([good, bad], settings=settings)
+
+    assert result["written"] == ["newVHISmedical-tc.pdf"]
+    assert len(result["rejected"]) == 1  # 治理校验对报告同样生效
+    assert (settings.index_dir / "reports" / "newVHISmedical.json").exists()
+    assert not (settings.index_dir / "chroma").exists()  # 未触碰索引
 
 
 def test_changed_file_reingested(tmp_path):

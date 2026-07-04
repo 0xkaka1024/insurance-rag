@@ -29,11 +29,12 @@ def _merge_intervals(intervals: list[tuple[float, float]]) -> list[tuple[float, 
     return merged
 
 
-def extract_page_text(page: pdfplumber.page.Page) -> str:
+def extract_page_text(page: pdfplumber.page.Page, info: dict | None = None) -> str:
     """双栏感知的整页文本提取；单栏页行为与 extract_text 一致。
 
     以「跨中缝的词」（通栏标题等）的 y 区间为分割线，把页面切成若干水平带；
     带内若左右两侧都有词且无词跨中缝，则先提取整个左半再提取右半。
+    传入 info dict 时回填页级判定（two_column），供语料质量报告使用。
     """
     words = page.extract_words()
     if not words:
@@ -67,6 +68,8 @@ def extract_page_text(page: pdfplumber.page.Page) -> str:
         has_left = any(w["x1"] <= center + gutter for w in in_band)
         has_right = any(w["x0"] >= center - gutter for w in in_band)
         if kind == "columnar" and has_left and has_right:
+            if info is not None:
+                info["two_column"] = True
             left = page.crop((px0, y0, center, y1)).extract_text() or ""
             right = page.crop((center, y0, px1, y1)).extract_text() or ""
             parts.extend(t for t in (left, right) if t.strip())
@@ -83,6 +86,7 @@ class Page:
     page_no: int  # 1-based，与 PDF 阅读器页码一致，供引用定位
     text: str  # 简体归一后文本，用于切片与 embedding
     raw_text: str  # 原始文本（多为繁体），用于引用展示
+    two_column: bool = False  # 该页是否触发过分栏提取，供语料质量报告抽查
 
 
 def normalize(text: str) -> str:
@@ -104,8 +108,23 @@ def parse_pdf(path: Path) -> list[Page]:
     pages: list[Page] = []
     with pdfplumber.open(path) as pdf:
         for i, page in enumerate(pdf.pages, start=1):
-            raw = extract_page_text(page)
+            info: dict = {}
+            raw = extract_page_text(page, info)
             if not raw.strip():
                 continue
-            pages.append(Page(product=product, page_no=i, text=normalize(raw), raw_text=raw))
+            pages.append(
+                Page(
+                    product=product,
+                    page_no=i,
+                    text=normalize(raw),
+                    raw_text=raw,
+                    two_column=info.get("two_column", False),
+                )
+            )
     return pages
+
+
+def page_count(path: Path) -> int:
+    """PDF 总页数（含未能提取文本的页），供报告对照 parsed_pages 暴露空页。"""
+    with pdfplumber.open(path) as pdf:
+        return len(pdf.pages)

@@ -61,3 +61,13 @@ def test_parse_pdf_uses_column_aware_extraction(tmp_path):
     f.write_bytes(make_pdf(TWO_COL_PAGE))
     [page] = parse_pdf(f)
     assert page.text.index("left three") < page.text.index("right one")
+    assert page.two_column is True  # 分栏判定回填，供语料质量报告抽查
+
+
+def test_single_column_page_not_marked_two_column(tmp_path):
+    from app.ingest.parser import parse_pdf
+
+    f = tmp_path / "Demo_tc.pdf"
+    f.write_bytes(make_pdf(SINGLE_COL_PAGE))
+    [page] = parse_pdf(f)
+    assert page.two_column is False

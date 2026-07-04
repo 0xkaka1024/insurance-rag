@@ -13,9 +13,10 @@ from pathlib import Path
 
 from app.core.config import Settings, get_settings
 from app.core.embedding import EmbeddingClient
-from app.ingest.chunker import Chunker, FixedChunker
+from app.ingest.chunker import Chunk, Chunker, FixedChunker
 from app.ingest.indexer import Indexer
-from app.ingest.parser import parse_pdf, product_from_filename
+from app.ingest.parser import page_count, parse_pdf, product_from_filename
+from app.ingest.report import build_report, save_report
 from app.ingest.structural import StructuralChunker
 
 logger = logging.getLogger("ingest")
@@ -92,9 +93,22 @@ def ingest_files(
             skipped.append(path.name)
             continue
         pages = parse_pdf(path)
+        by_strategy: dict[str, list[Chunk]] = {}
         for chunker in chunkers:
             chunks = chunker.split(pages)
+            by_strategy[chunker.name] = chunks
             indexed_chunks += indexer.index(chunks, embedder)
+        save_report(
+            build_report(
+                product=product_from_filename(path),
+                filename=path.name,
+                sha256=digest,
+                total_pages=page_count(path),
+                pages=pages,
+                chunks_by_strategy=by_strategy,
+            ),
+            s,
+        )
         manifest[path.name] = digest
         _save_manifest(manifest_path, manifest)  # 每文件落盘，中断后已完成的不重做
         ingested.append(path.name)
@@ -105,3 +119,40 @@ def ingest_files(
         )
     return {"files": len(ingested), "chunks": indexed_chunks, "ingested": ingested,
             "rejected": rejected, "skipped": skipped}
+
+
+def rebuild_reports(
+    paths: list[Path],
+    chunkers: list[Chunker] | None = None,
+    settings: Settings | None = None,
+) -> dict[str, int | list[str]]:
+    """只重建语料质量报告：解析 + 切片 + lint，不写索引、不调 embedding（零成本）。
+
+    用途：给报告机制上线前已入库的文件补报告（manifest hash 会让 ingest 跳过它们）。
+    治理校验照常生效——报告与索引同属公开面，白名单外文件同样拒绝。
+    """
+    s = settings or get_settings()
+    chunkers = chunkers or [FixedChunker(), StructuralChunker()]
+    written: list[str] = []
+    rejected: list[str] = []
+    for path in paths:
+        ok, reason = check_ingestable(path)
+        if not ok:
+            logger.warning("reject %s: %s", path.name, reason)
+            rejected.append(f"{path.name}: {reason}")
+            continue
+        pages = parse_pdf(path)
+        by_strategy = {ch.name: ch.split(pages) for ch in chunkers}
+        save_report(
+            build_report(
+                product=product_from_filename(path),
+                filename=path.name,
+                sha256=_sha256(path),
+                total_pages=page_count(path),
+                pages=pages,
+                chunks_by_strategy=by_strategy,
+            ),
+            s,
+        )
+        written.append(path.name)
+    return {"reports": len(written), "written": written, "rejected": rejected}
