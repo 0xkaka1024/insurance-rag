@@ -76,6 +76,39 @@ def test_ask_stream_refuses_uncited_answer_in_final():
     assert final["citations"] == []
 
 
+class ExplodingStreamLLM:
+    """第一段增量之后上游断掉：SSE 必须发 error 事件，不许裸断连。"""
+
+    def stream(self, system, user):
+        yield "等待期为"
+        raise RuntimeError("upstream connection reset")
+
+    def complete(self, system, user):
+        raise RuntimeError("upstream connection reset")
+
+
+def test_sse_emits_error_event_on_midstream_failure():
+    pipe = RagPipeline(
+        FakeRetriever([_chunk()]), ExplodingStreamLLM(), FakeReranker(pairs=[(0, 0.9)]), SETTINGS
+    )
+    app.dependency_overrides[get_pipeline] = lambda: pipe
+    try:
+        resp = TestClient(app).post(
+            "/ask",
+            json={"question": "等待期多少天", "stream": True},
+            headers={"x-request-id": "rid-sse-1"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 200  # SSE 已发响应头，错误走事件而非状态码
+    body = resp.text
+    assert "event: delta" in body  # 断掉前的增量已流出
+    assert "event: error" in body  # 终结事件必须存在
+    assert "rid-sse-1" in body  # error 事件带 request_id，可对日志
+    assert "event: final" not in body
+    assert resp.headers.get("x-accel-buffering") == "no"  # 反代不缓冲流式
+
+
 def test_ask_endpoint_streams_sse():
     app.dependency_overrides[get_pipeline] = _pipeline
     try:

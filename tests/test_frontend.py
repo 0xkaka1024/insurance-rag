@@ -17,6 +17,14 @@ def test_static_mounted():
     assert resp.status_code == 200
 
 
+def test_error_handling_wired_in_frontend():
+    resp = client.get("/")
+    assert "readErr" in resp.text  # 统一错误解析（resp.ok 检查）
+    assert "生成中断" in resp.text  # SSE error 事件渲染
+    assert "连接中断" in resp.text  # 无终结事件的断流兜底
+    assert "请求ID" in resp.text  # 错误信息带可排查的 request_id
+
+
 def test_corpus_view_present():
     resp = client.get("/")
     assert "语料" in resp.text

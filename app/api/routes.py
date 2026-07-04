@@ -1,4 +1,5 @@
 import json
+import logging
 import threading
 from functools import lru_cache
 from typing import Annotated
@@ -8,11 +9,17 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
+from app.core.logging import request_id_var
 from app.ingest.indexer import Indexer
 from app.ingest.report import reports_dir
 from app.rag.pipeline import RagConfig, RagPipeline, build_pipeline
 
+logger = logging.getLogger("api")
+
 router = APIRouter()
+
+# SSE 反缓冲：HF/nginx 类代理可能整段缓冲，流式退化为一次性吐出
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
 class AskRequest(BaseModel):
@@ -224,15 +231,27 @@ def _production_config() -> RagConfig:
     return RagConfig(chunking=s.prod_chunking, retrieval=s.prod_retrieval, rerank=s.prod_rerank)
 
 
-def _sse(pipeline: RagPipeline, question: str, config: RagConfig):
-    for event, data in pipeline.ask_stream(question, config):
-        yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+def _sse(pipeline: RagPipeline, question: str, config: RagConfig, request_id: str):
+    """SSE 帧生成器。事件流必须有终结事件：中途异常发 error 事件而非裸断连——
+    否则前端半截答案凭空消失、监控全盲（HTTP 已是 200，无任何错误信号）。"""
+    try:
+        for event, data in pipeline.ask_stream(question, config):
+            yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    except Exception:
+        logger.exception("ask_stream failed mid-stream")
+        payload = {
+            "message": "生成中断：上游服务暂时不可用，请稍后重试。",
+            "request_id": request_id,
+        }
+        yield f"event: error\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def _serve_ask(pipeline: RagPipeline, req: AskRequest, config: RagConfig):
     if req.stream:
         return StreamingResponse(
-            _sse(pipeline, req.question, config), media_type="text/event-stream"
+            _sse(pipeline, req.question, config, request_id_var.get()),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
         )
     result = pipeline.ask(req.question, config)
     return AskResponse(

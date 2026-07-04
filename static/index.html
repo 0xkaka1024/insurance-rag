@@ -195,6 +195,15 @@ function readConfig(el) {
 /* ---------- 渲染工具 ---------- */
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
+/* 统一错误信息：后端 JSON 错误体带 request_id，凭 ID 可在日志里对上这次请求 */
+async function readErr(resp) {
+  try {
+    const err = await resp.json();
+    if (err && err.detail) return `${err.detail}（请求ID：${err.request_id || "-"}）`;
+  } catch (e) { /* 非 JSON 错误体 */ }
+  return "HTTP " + resp.status;
+}
+
 /* 检索溯源行：该 chunk 在向量/BM25/粗排/rerank 各阶段的名次与分数（后端未给的字段不显示） */
 function provLine(c, pos) {
   const parts = [];
@@ -277,7 +286,7 @@ async function askStream(question, handlers) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, stream: true }),
   });
-  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  if (!resp.ok) throw new Error(await readErr(resp));
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
@@ -312,12 +321,21 @@ const Chat = {
     out.prepend(holder);
     const live = holder.querySelector("[data-role=live]");
     let chunksData = null;
+    let settled = false;  // 收到 final 或 error 才算有交代
     try {
       await askStream(q, {
         chunks: d => { chunksData = d; },
         delta: d => { live.textContent += d.text; },
-        final: d => { holder.replaceWith(wrapFinal(q, d, chunksData)); },
+        final: d => { settled = true; holder.replaceWith(wrapFinal(q, d, chunksData)); },
+        error: d => {
+          settled = true;
+          live.innerHTML = `<span class="badge warn">生成中断</span> ${esc(d.message || "上游服务异常")}
+            <span class="muted">（请求ID：${esc(d.request_id || "-")}，可凭此排查）</span>`;
+        },
       });
+      if (!settled) {
+        live.innerHTML = `<span class="badge warn">连接中断</span> 回答未完成，请重试。`;
+      }
     } catch (e) {
       live.textContent = "请求失败：" + e.message;
     } finally {
@@ -353,6 +371,7 @@ const Playground = {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ question: q, config: readConfig(document.getElementById(cfgId)) }),
           });
+          if (!resp.ok) throw new Error(await readErr(resp));
           const data = await resp.json();
           out.innerHTML = "";
           out.appendChild(resultCard(data, { retrieveOnly }));
@@ -536,7 +555,16 @@ const Eval = {
   },
   load: async (name) => {
     if (!name) return;
-    const data = await (await fetch("/eval_results/" + encodeURIComponent(name))).json();
+    let data;
+    try {
+      const resp = await fetch("/eval_results/" + encodeURIComponent(name));
+      if (!resp.ok) throw new Error(await readErr(resp));
+      data = await resp.json();
+    } catch (e) {
+      document.getElementById("eval-table").innerHTML =
+        `<p class="muted">加载失败：${esc(e.message)}</p>`;
+      return;
+    }
     const metrics = data.requested_metrics || [];
     const fmt = x => (x == null ? "—" : String(x));
     const head = ["切片", "检索", "重排", ...metrics,

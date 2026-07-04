@@ -28,6 +28,27 @@ def test_request_id_honors_inbound_header():
     assert resp.headers["x-request-id"] == "abc123"
 
 
+def test_unhandled_exception_returns_json_with_request_id():
+    """非流式 500 不再是纯文本：JSON 错误体带 request_id，前端可解析可报障。"""
+
+    class BoomPipeline:
+        def ask(self, q, cfg):
+            raise RuntimeError("boom")
+
+    routes_app_client = TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides[routes.get_pipeline] = lambda: BoomPipeline()
+    try:
+        resp = routes_app_client.post(
+            "/ask", json={"question": "q"}, headers={"x-request-id": "rid-err-1"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 500
+    body = resp.json()
+    assert body["request_id"] == "rid-err-1"
+    assert "detail" in body
+
+
 def test_get_pipeline_cold_start_builds_serially(monkeypatch):
     """冷启动并发首请求不得并行构建 pipeline（chromadb 共享系统注册表非线程安全）。"""
     active, max_active = 0, 0
