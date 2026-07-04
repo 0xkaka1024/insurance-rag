@@ -52,6 +52,52 @@ SETTINGS = Settings(_env_file=None, top_k=2, recall_k=5, refuse_threshold=0.3)
 CORPUS = [_chunk(i, f"内容{i}", 0.5) for i in range(5)]
 
 
+def _vec_chunk(seq: int, vec: float) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"Demo:fixed:{seq:04d}",
+        text=f"内容{seq}",
+        product="Demo",
+        page_start=1,
+        page_end=1,
+        score=vec,
+        vector_rank=seq + 1,
+        vector_score=vec,
+        retrieval_rank=seq + 1,
+    )
+
+
+def test_vector_floor_refuses_low_similarity_without_rerank():
+    """红线兜底：rerank 关闭时最强向量余弦低于 vector_floor 必须拒答。"""
+    pipe = RagPipeline(FakeRetriever([_vec_chunk(0, 0.21), _vec_chunk(1, 0.18)]),
+                       FakeLLM(), FakeReranker(), SETTINGS)
+    result = pipe.ask("珠穆朗玛峰多高", RagConfig(rerank=False))
+    assert result.refused is True
+    assert result.refuse_reason == "low_score"
+    assert result.answer == REFUSAL_LOW_SCORE
+
+
+def test_vector_floor_passes_relevant_results():
+    pipe = RagPipeline(FakeRetriever([_vec_chunk(0, 0.62)]), FakeLLM(), FakeReranker(), SETTINGS)
+    result = pipe.ask("等候期多少天", RagConfig(rerank=False))
+    assert not result.refused
+
+
+def test_vector_floor_applies_when_rerank_degraded():
+    pipe = RagPipeline(FakeRetriever([_vec_chunk(0, 0.2)]), FakeLLM(),
+                       FakeReranker(fail=True), SETTINGS)
+    result = pipe.ask("q", RagConfig(rerank=True))
+    assert result.refused is True
+    assert result.refuse_reason == "low_score"
+
+
+def test_rerank_success_overrides_vector_floor():
+    """rerank 成功时由 cross-encoder 阈值把关，低向量分不误杀。"""
+    pipe = RagPipeline(FakeRetriever([_vec_chunk(0, 0.2)]),
+                       FakeLLM(), FakeReranker(pairs=[(0, 0.9)]), SETTINGS)
+    result = pipe.ask("AVPU 产品代号", RagConfig(rerank=True))
+    assert not result.refused
+
+
 def test_rerank_reorders_and_rescores():
     reranker = FakeReranker(pairs=[(3, 0.92), (0, 0.55)])
     pipe = RagPipeline(FakeRetriever(CORPUS), FakeLLM(), reranker, SETTINGS)

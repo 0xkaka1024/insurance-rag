@@ -146,8 +146,23 @@ class RagPipeline:
                 logger.warning("rerank degraded, falling back to retrieval order: %s", exc)
                 chunks, degraded = chunks[: s.top_k], True
             timings["rerank_ms"] = round((perf_counter() - t1) * 1000, 1)
-            # 拒答阈值只在 rerank 分数可用时生效（cross-encoder 分数才有绝对意义）
+            # cross-encoder 分数有绝对意义，rerank 成功时由它把关
             if not degraded and chunks and chunks[0].score < s.refuse_threshold:
+                return _Prepared(
+                    cfg=cfg, t0=t0, timings=timings, chunks=chunks, question=question,
+                    refused=True, refuse_reason="low_score",
+                    refusal_answer=REFUSAL_LOW_SCORE, degraded=degraded,
+                )
+        if not cfg.rerank or degraded:
+            # 红线兜底：rerank 关闭或降级时，用检索侧最强向量余弦做保守下限，
+            # 默认配置不允许「无任何分数下限直送 LLM」。BM25 分数未校准不参与；
+            # 无向量溯源信号（如测试 Fake）时跳过。
+            vec_scores = [c.vector_score for c in chunks if c.vector_score is not None]
+            if vec_scores and max(vec_scores) < s.vector_floor:
+                logger.info(
+                    "refused by vector floor",
+                    extra={"extra_fields": {"best_vector_score": max(vec_scores)}},
+                )
                 return _Prepared(
                     cfg=cfg, t0=t0, timings=timings, chunks=chunks, question=question,
                     refused=True, refuse_reason="low_score",

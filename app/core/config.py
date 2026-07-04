@@ -29,7 +29,10 @@ class Settings(BaseSettings):
     # 检索参数
     top_k: int = 5
     recall_k: int = 20
-    refuse_threshold: float = 0.3
+    refuse_threshold: float = 0.3  # rerank(cross-encoder) 分数下限
+    # rerank 关闭/降级时的兜底：检索侧最强向量余弦低于此值即拒答。
+    # 保守初值，未经评测集校准（SPEC 开放问题）；宁可少量误拒不裸奔。
+    vector_floor: float = 0.35
 
     # 外部调用容错
     request_timeout_s: float = 30.0
