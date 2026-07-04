@@ -135,7 +135,10 @@ def evaluate_config(
     可逐 commit 回归，度量「检索到没有」与「引用的位置对不对」——后者
     正是 RAGAS faithfulness 不覆盖的合规命门（内容对但页码张冠李戴不扣分）。
     """
-    price = PRICE_PER_MTOK.get(llm_model, {"in": 0.0, "out": 0.0})
+    price = PRICE_PER_MTOK.get(llm_model)
+    if price is None:
+        # 静默记 0 会让成本报表失真；记 None 并告警，提示更新价格表
+        logger.warning("模型 %s 不在 PRICE_PER_MTOK 价格表中，cost_cny 记为 None", llm_model)
     records: list[dict] = []
     refusal_hits = 0
     refusal_total = 0
@@ -153,8 +156,9 @@ def evaluate_config(
             n_answerable += 1
             false_refusals += int(result.refused)
         usage = result.meta.get("usage", {})
-        cost += usage.get("prompt_tokens", 0) / 1e6 * price["in"]
-        cost += usage.get("completion_tokens", 0) / 1e6 * price["out"]
+        if price is not None:
+            cost += usage.get("prompt_tokens", 0) / 1e6 * price["in"]
+            cost += usage.get("completion_tokens", 0) / 1e6 * price["out"]
 
         gold = None if is_refuse_type else _gold_span(row)
         retrieval_hit = citation_hit = None
@@ -195,7 +199,7 @@ def evaluate_config(
         "n_gold": len(r_hits),
         "retrieval_hit_rate": round(sum(r_hits) / len(r_hits), 4) if r_hits else None,
         "citation_hit_rate": round(sum(c_hits) / len(c_hits), 4) if c_hits else None,
-        "cost_cny": round(cost, 4),
+        "cost_cny": round(cost, 4) if price is not None else None,
         "duration_s": round(time.perf_counter() - t0, 2),
     }
 
@@ -230,9 +234,9 @@ def score_with_ragas(records: list[dict], metrics: list[str], settings: Settings
     }
     judge = LangchainLLMWrapper(
         ChatOpenAI(
-            model=settings.llm_model,
-            api_key=settings.deepseek_api_key,
-            base_url=settings.deepseek_base_url,
+            model=settings.judge_model,  # 与被评模型解耦：--llm 只换生成侧
+            api_key=settings.judge_api_key or settings.deepseek_api_key,
+            base_url=settings.judge_base_url or settings.deepseek_base_url,
             temperature=0,
         )
     )

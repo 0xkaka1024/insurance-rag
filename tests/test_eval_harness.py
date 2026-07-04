@@ -172,6 +172,13 @@ def test_gold_hit_metrics_by_page_overlap():
     assert recs[0]["cited_chunk_ids"] == ["Demo:fixed:0000"]
 
 
+def test_unknown_model_price_yields_none_cost(caplog):
+    rows = [{"question": "等待期多少天", "type": "fact", "ground_truth": "90"}]
+    entry = evaluate_config(FakePipeline(), RagConfig(), rows, llm_model="qwen-plus")
+    assert entry["cost_cny"] is None  # 不再静默记 0，成本报表不撒谎
+    assert any("PRICE_PER_MTOK" in r.message for r in caplog.records)
+
+
 def test_gold_span_single_page_and_garbage():
     from eval.harness import _gold_span
 

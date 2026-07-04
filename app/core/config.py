@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     index_dir: Path = Path("data/index")
     eval_results_dir: Path = Path("eval/results")
 
+    # RAGAS judge：与被评生成模型解耦（自评偏差 + `--llm` 换生成模型不得连带改 judge）。
+    # 留空的 base/key 回退 DeepSeek 配置；换 judge 供应商时三项一起配。
+    judge_model: str = "deepseek-chat"
+    judge_base_url: str = ""
+    judge_api_key: str = ""
+
     # 生产入口 /ask 的服务端锁定配置（安全相关开关不由调用方决定；
     # 自由切换是实验能力，走 /playground/ask 与 /retrieve）
     prod_chunking: str = "structural"

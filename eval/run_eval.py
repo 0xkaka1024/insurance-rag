@@ -82,7 +82,15 @@ def main() -> int:
         "n_questions": len(rows),
         "requested_metrics": args.metrics,
         "llm": settings.llm_model,
-        "total_cost_cny": round(sum(e["cost_cny"] for e in entries), 4),
+        "judge": {
+            "model": settings.judge_model,
+            "base_url": settings.judge_base_url or settings.deepseek_base_url,
+        },
+        "total_cost_cny": (
+            None  # 任一配置成本未知（价格表缺模型）→ 总额不假装精确
+            if any(e["cost_cny"] is None for e in entries)
+            else round(sum(e["cost_cny"] for e in entries), 4)
+        ),
         "total_duration_s": round(sum(e["duration_s"] for e in entries), 2),
         "configs": entries,
     }
