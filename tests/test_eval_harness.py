@@ -8,8 +8,10 @@ from eval.harness import (
     evaluate_config,
     expand_configs,
     load_dataset,
+    penalized_means,
     result_filename,
     save_result,
+    scorable,
     validate_metrics,
 )
 
@@ -92,6 +94,46 @@ def test_refusal_accuracy_none_without_refuse_rows():
     rows = [{"question": "等待期多少天", "type": "fact", "ground_truth": "90"}]
     entry = evaluate_config(FakePipeline(), RagConfig(), rows)
     assert entry["refusal_accuracy"] is None
+    assert entry["false_refusal_rate"] == 0.0
+    assert entry["n_answerable"] == 1
+    assert entry["n_scored"] == 1
+
+
+class OverRefusingPipeline(FakePipeline):
+    """把可答题也拒了：false_refusal_rate 必须把这暴露出来。"""
+
+    def ask(self, question: str, cfg: RagConfig) -> AskResult:
+        result = super().ask(question, cfg)
+        result.refused = True
+        result.refuse_reason = "low_score"
+        return result
+
+
+def test_false_refusal_rate_exposes_over_refusing_config():
+    rows = [
+        {"question": "等待期多少天", "type": "fact", "ground_truth": "90天"},
+        {"question": "赔偿限额是多少", "type": "fact", "ground_truth": "100万"},
+        {"question": "30岁多少钱", "type": "unanswerable"},
+    ]
+    entry = evaluate_config(OverRefusingPipeline(), RagConfig(), rows)
+    assert entry["refusal_accuracy"] == 1.0  # 拒答题它当然全"对"——
+    assert entry["false_refusal_rate"] == 1.0  # ——但误拒率同时暴露它把可答题全拒了
+    assert entry["n_scored"] == 0
+
+
+def test_penalized_means_scales_by_coverage():
+    means = {"faithfulness": 0.9, "context_recall": None}
+    out = penalized_means(means, n_scored=8, n_answerable=10)
+    assert out["faithfulness"] == 0.72  # 0.9 × 8/10：误拒的 2 题按 0 分计
+    assert out["context_recall"] is None
+    assert penalized_means(means, 0, 0) == {"faithfulness": None, "context_recall": None}
+
+
+def test_scorable_excludes_refused_error_and_refuse_types():
+    assert scorable({"type": "fact", "refused": False})
+    assert not scorable({"type": "fact", "refused": True})
+    assert not scorable({"type": "unanswerable", "refused": True})
+    assert not scorable({"type": "fact", "refused": False, "error": "boom"})
 
 
 def test_result_filename_format():

@@ -8,12 +8,15 @@
 
 import itertools
 import json
+import logging
 import subprocess
 import time
 from pathlib import Path
 
 from app.core.config import Settings
 from app.rag.pipeline import RagConfig, RagPipeline
+
+logger = logging.getLogger("eval")
 
 GT_FREE_METRICS = ("faithfulness", "answer_relevancy")
 ALL_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall")
@@ -73,17 +76,43 @@ def validate_metrics(metrics: list[str], rows: list[dict]) -> None:
             )
 
 
+def scorable(record: dict) -> bool:
+    """可进 RAGAS 打分池的 record：可答题、未被拒答、pipeline 未出错。"""
+    return (
+        record["type"] not in REFUSE_TYPES
+        and not record["refused"]
+        and not record.get("error")
+    )
+
+
+def penalized_means(means: dict, n_scored: int, n_answerable: int) -> dict:
+    """误拒/出错题按 0 分计入的均值。
+
+    RAGAS 只对实际作答的题打分（拒答文本没有可评内容），单看 scored 均值
+    会给「多拒答少作答」的配置博弈空间——阈值一收紧，难题被藏出打分池，
+    均值反而上升。惩罚后均值以全部可答题为分母，两个数并列展示。
+    """
+    if not n_answerable:
+        return {m: None for m in means}
+    return {
+        m: (None if v is None else round(v * n_scored / n_answerable, 4))
+        for m, v in means.items()
+    }
+
+
 def evaluate_config(
     pipeline: RagPipeline,
     cfg: RagConfig,
     rows: list[dict],
     llm_model: str = "deepseek-chat",
 ) -> dict:
-    """逐题跑 pipeline，产出 RAGAS 输入 records 与拒答准确率/成本/耗时。"""
+    """逐题跑 pipeline，产出 RAGAS 输入 records 与拒答/误拒/成本/耗时指标。"""
     price = PRICE_PER_MTOK.get(llm_model, {"in": 0.0, "out": 0.0})
     records: list[dict] = []
     refusal_hits = 0
     refusal_total = 0
+    n_answerable = 0
+    false_refusals = 0
     cost = 0.0
     t0 = time.perf_counter()
     for row in rows:
@@ -91,6 +120,9 @@ def evaluate_config(
         if row["type"] in REFUSE_TYPES:
             refusal_total += 1
             refusal_hits += int(result.refused)
+        else:
+            n_answerable += 1
+            false_refusals += int(result.refused)
         usage = result.meta.get("usage", {})
         cost += usage.get("prompt_tokens", 0) / 1e6 * price["in"]
         cost += usage.get("completion_tokens", 0) / 1e6 * price["out"]
@@ -107,10 +139,15 @@ def evaluate_config(
                 "timings": result.timings,
             }
         )
+    n_scored = sum(1 for r in records if scorable(r))
     return {
         "config": cfg.model_dump(),
         "records": records,
         "refusal_accuracy": (refusal_hits / refusal_total) if refusal_total else None,
+        # 误拒率：可答题被拒答的比例。没有它，"拒答一切"的配置能拿满分拒答准确率
+        "false_refusal_rate": round(false_refusals / n_answerable, 4) if n_answerable else None,
+        "n_answerable": n_answerable,
+        "n_scored": n_scored,
         "cost_cny": round(cost, 4),
         "duration_s": round(time.perf_counter() - t0, 2),
     }
@@ -160,26 +197,34 @@ def score_with_ragas(records: list[dict], metrics: list[str], settings: Settings
             check_embedding_ctx_length=False,
         )
     )
-    # 拒答题不参与 RAGAS（无生成内容可评），由拒答准确率单独覆盖
-    scored_rows = [
+    # 拒答/出错题不进 judge（无生成内容可评、也不烧 judge 钱）；
+    # 其代价通过 false_refusal_rate 与 metrics_penalized 显性呈现，
+    # 不再是从打分池里静默消失（幸存者偏差）。
+    scored = [r for r in records if scorable(r)]
+    rows = [
         {
             "user_input": r["question"],
             "response": r["answer"],
             "retrieved_contexts": r["contexts"],
             "reference": r["ground_truth"],
         }
-        for r in records
-        if r["type"] not in REFUSE_TYPES and not r["refused"]
+        for r in scored
     ]
-    if not scored_rows:
+    if not rows:
         return {m: None for m in metrics}
     result = evaluate(
-        EvaluationDataset.from_list(scored_rows),
+        EvaluationDataset.from_list(rows),
         metrics=[metric_objs[m] for m in metrics],
         llm=judge,
         embeddings=embeddings,
     )
     df = result.to_pandas()
+    # 逐题分数回填 records：两次运行可逐题 diff（"哪道题退步了"可回答）
+    for r, (_, df_row) in zip(scored, df.iterrows(), strict=True):
+        r["scores"] = {
+            m: (None if df_row[m] != df_row[m] else round(float(df_row[m]), 4))
+            for m in metrics  # NaN != NaN，judge 偶发解析失败的题记 None
+        }
     return {m: round(float(df[m].mean()), 4) for m in metrics}
 
 

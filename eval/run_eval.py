@@ -24,6 +24,7 @@ from eval.harness import (  # noqa: E402
     expand_configs,
     git_short_hash,
     load_dataset,
+    penalized_means,
     result_filename,
     save_result,
     score_with_ragas,
@@ -64,8 +65,13 @@ def main() -> int:
         print(f"[{i}/{len(configs)}] {cfg.model_dump()} ...", flush=True)
         entry = evaluate_config(pipeline, cfg, rows, llm_model=settings.llm_model)
         entry["metrics"] = score_with_ragas(entry["records"], args.metrics, settings)
+        entry["metrics_penalized"] = penalized_means(
+            entry["metrics"], entry["n_scored"], entry["n_answerable"]
+        )
         entries.append(entry)
-        print(f"    metrics={entry['metrics']} refusal={entry['refusal_accuracy']} "
+        print(f"    metrics={entry['metrics']} penalized={entry['metrics_penalized']} "
+              f"refusal={entry['refusal_accuracy']} false_refusal={entry['false_refusal_rate']} "
+              f"scored={entry['n_scored']}/{entry['n_answerable']} "
               f"cost=¥{entry['cost_cny']} {entry['duration_s']}s")
 
     now = datetime.now()
