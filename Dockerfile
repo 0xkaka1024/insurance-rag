@@ -15,8 +15,11 @@ ENV PYTHONUNBUFFERED=1 \
 # - RATE_LIMIT / DAILY_BUDGET：防公网脚本烧 API 账单；转 public 前另在
 #   Space Secrets 配 API_AUTH_TOKEN 可再加一道 Bearer 鉴权
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# 全量 lock + 哈希校验：传递依赖不再浮动解析（可复现构建 + 供应链防护）。
+# 更新依赖：改 requirements.txt → uv pip compile --universal --generate-hashes \
+#   requirements.txt -o requirements.lock
+COPY requirements.lock .
+RUN pip install --require-hashes -r requirements.lock
 
 COPY app/ app/
 COPY static/ static/

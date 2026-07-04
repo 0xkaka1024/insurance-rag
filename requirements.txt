@@ -1,4 +1,4 @@
-# Runtime（部署镜像只装这一份）
+# Runtime 直接依赖（人类编辑这份；镜像安装 requirements.lock——见 Dockerfile 注释）
 fastapi==0.139.0
 uvicorn==0.49.0
 pydantic==2.13.4

@@ -99,11 +99,11 @@
 
 ### G3 公开部署前（P0/P1）
 
-- [ ] 鉴权 + 限流 + LLM max_tokens + 每日成本熔断（短期 HF Space 设 private 止血）
-- [ ] SSE error 事件协议 + 全局异常 handler（JSON 含 request_id）+ 前端错误态与 resp.ok 检查
+- [x] 鉴权（API_AUTH_TOKEN 可选 Bearer）+ 每 IP 限流 + LLM max_tokens + 每日额度熔断（app/api/guard.py 三道闸；默认关，Dockerfile 生产开启；Space 已 private）
+- [x] SSE error 事件协议（带 request_id）+ 全局异常 handler（JSON 错误体）+ 异常请求结构化日志 + 前端错误/中断态与 readErr 统一解析 + SSE 反缓冲头
 - [x] lifespan 启动校验索引 fail-fast（STARTUP_REQUIRE_INDEX，Dockerfile 置 true）；/ready 深检（collection>0、BM25 存在、key 已配）与 /health 浅活分离；HEALTHCHECK 改打 /ready
-- [ ] rerank 独立短超时（3-5s、重试≤1）+ 简单熔断；rerank 响应越界 index 防御性过滤
-- [ ] 依赖全量 lock（uv pip compile）入 git；CI 加 pip-audit / coverage 门槛 / docker build / gitleaks
+- [x] rerank 独立短超时（5s、重试 1 次）+ 连续 3 败熔断 60s + 响应越界/重复 index 过滤与显式重排序
+- [x] 依赖全量 lock（uv pip compile --universal --generate-hashes，97 包入 git）；镜像 --require-hashes 安装；CI 四件套：coverage 门槛 90%（现值 98%）/ pip-audit / docker build（stub 索引）/ gitleaks 全历史
 
 ### G4 Playground 增强（实验平台体验，详见 REVIEW 第"Playground 优化方案"节）
 
@@ -142,3 +142,4 @@
 - 真实案例（D1 验收发现）：VHIS 保障表页「(等候期：300日)」是个别保障项的标注，表格拍平后被引用为整体等待期 → R9 VLM 表格解析的直接依据；评测集 table 题型必须覆盖此页
 - Qwen3-Reranker 分数分布与 bge 不同：分红实现率类无据问题 top 分 0.498，拒答阈值 0.3 偏低 → D5 在评测集上校准（LLM 有据拒答检测已兜底）
 - 国际站 API RTT 较高：embedding 单查询 ~1.5s，P95<5s 目标偏紧 → 可选优化：查询 embedding 缓存、rerank 并行、或换国内站
+- PYSEC-2026-311（chromadb 1.5.9）：官方暂无修复版本，CI pip-audit 显式豁免中——**每次升级依赖时复查**，有修复版即升并移除豁免（.github/workflows/ci.yml audit job）
