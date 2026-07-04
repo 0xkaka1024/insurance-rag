@@ -14,31 +14,15 @@ from pathlib import Path
 from app.core.config import Settings, get_settings
 from app.core.embedding import EmbeddingClient
 from app.ingest.chunker import Chunk, Chunker, FixedChunker
+
+# 治理规则集中在 governance.py（deny 归一化 + 白名单 + 内容指纹）；re-export 维持既有导入路径
+from app.ingest.governance import INGEST_WHITELIST, check_ingestable  # noqa: F401
 from app.ingest.indexer import Indexer
 from app.ingest.parser import page_count, parse_pdf, product_from_filename
 from app.ingest.report import build_report, save_report
 from app.ingest.structural import StructuralChunker
 
 logger = logging.getLogger("ingest")
-
-DENY_SUBSTRINGS = ("training deck", "premiumtable", "premium-table")
-
-# v1 入库白名单（CLAUDE.md 红线），按 product_from_filename 推导的产品标识精确匹配。
-# 三款结构差异大的产品：医疗（VHIS）+ 储蓄 + 危疾（爱伴航2，kaka 2026-07-03 选定）。
-INGEST_WHITELIST = frozenset(
-    {"newVHISmedical", "GlobalFlexiSavingsInsurancePlan", "OnYourSideInsurancePlan2"}
-)
-
-
-def check_ingestable(path: Path) -> tuple[bool, str]:
-    name = path.name.lower()
-    for pattern in DENY_SUBSTRINGS:
-        if pattern in name:
-            return False, f"红线拒绝：文件名含 '{pattern}'（内部材料/费率表不入库）"
-    product = product_from_filename(path)
-    if product not in INGEST_WHITELIST:
-        return False, f"白名单外：产品 '{product}' 不在 v1 入库白名单 {sorted(INGEST_WHITELIST)}"
-    return True, ""
 
 
 def _sha256(path: Path) -> str:
@@ -63,9 +47,12 @@ def ingest_files(
     embedder: EmbeddingClient | None = None,
     settings: Settings | None = None,
     force: bool = False,
+    fingerprints: dict[str, frozenset[str]] | None = None,
 ) -> dict[str, int | list[str]]:
     """逐文件入库；被拒/未变更文件分别记入 rejected/skipped，不中断其余文件。
 
+    治理双因子：文件名白名单 + 内容 sha256 指纹（governance.FINGERPRINTS 登记制，
+    重命名穿透不了）；fingerprints 参数供测试注入夹具指纹。
     幂等：文件内容 sha256 记入 manifest，同 hash 直接跳过（embedding 不花冤枉钱）；
     切片逻辑升级后需要重建索引时用 force=True。
     """
@@ -82,12 +69,12 @@ def ingest_files(
     rejected: list[str] = []
     skipped: list[str] = []
     for path in paths:
-        ok, reason = check_ingestable(path)
+        digest = _sha256(path)
+        ok, reason = check_ingestable(path, digest=digest, fingerprints=fingerprints)
         if not ok:
             logger.warning("reject %s: %s", path.name, reason)
             rejected.append(f"{path.name}: {reason}")
             continue
-        digest = _sha256(path)
         if not force and manifest.get(path.name) == digest:
             logger.info("skip unchanged %s", path.name)
             skipped.append(path.name)
@@ -125,18 +112,20 @@ def rebuild_reports(
     paths: list[Path],
     chunkers: list[Chunker] | None = None,
     settings: Settings | None = None,
+    fingerprints: dict[str, frozenset[str]] | None = None,
 ) -> dict[str, int | list[str]]:
     """只重建语料质量报告：解析 + 切片 + lint，不写索引、不调 embedding（零成本）。
 
     用途：给报告机制上线前已入库的文件补报告（manifest hash 会让 ingest 跳过它们）。
-    治理校验照常生效——报告与索引同属公开面，白名单外文件同样拒绝。
+    治理校验照常生效（含内容指纹）——报告与索引同属公开面。
     """
     s = settings or get_settings()
     chunkers = chunkers or [FixedChunker(), StructuralChunker()]
     written: list[str] = []
     rejected: list[str] = []
     for path in paths:
-        ok, reason = check_ingestable(path)
+        digest = _sha256(path)
+        ok, reason = check_ingestable(path, digest=digest, fingerprints=fingerprints)
         if not ok:
             logger.warning("reject %s: %s", path.name, reason)
             rejected.append(f"{path.name}: {reason}")
@@ -147,7 +136,7 @@ def rebuild_reports(
             build_report(
                 product=product_from_filename(path),
                 filename=path.name,
-                sha256=_sha256(path),
+                sha256=digest,
                 total_pages=page_count(path),
                 pages=pages,
                 chunks_by_strategy=by_strategy,

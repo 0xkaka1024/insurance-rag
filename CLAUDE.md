@@ -20,7 +20,7 @@
 ## 红线
 
 - API key 只放 `.env`（已 gitignore），任何代码、日志、commit 不得出现密钥
-- `data/` 不入 git；文件名含 `training deck` 的内部培训材料**不得**入库到公开部署的索引，v1 入库白名单（按产品标识精确匹配，见 `app/ingest/service.py:INGEST_WHITELIST`）：OnYourSideInsurancePlan2（危疾·爱伴航2）、newVHISmedical（医疗·VHIS）、GlobalFlexiSavingsInsurancePlan（储蓄）
+- `data/` 不入 git；文件名含 `training deck` 的内部培训材料**不得**入库到公开部署的索引，v1 入库白名单（产品标识 + 内容 sha256 双因子，见 `app/ingest/governance.py` 的 INGEST_WHITELIST 与 FINGERPRINTS 登记表）：OnYourSideInsurancePlan2（危疾·爱伴航2）、newVHISmedical（医疗·VHIS）、GlobalFlexiSavingsInsurancePlan（储蓄）；新文件/新版本入库须先登记指纹
 - `premiumtable` / `premium-table` 费率表文件是 v2 查表功能原料，v1 不入库
 - 保费/费率类问题一律路由拦截拒答，不允许 RAG 生成数字
 - 计划书/保单等含客户个人信息的文件一律不入公开部署的索引（v2 计划书功能为会话级上传，不落公共库）

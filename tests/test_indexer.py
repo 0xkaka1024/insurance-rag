@@ -25,7 +25,19 @@ def _chunk(seq: int, text: str) -> Chunk:
 
 @pytest.fixture
 def indexer(tmp_path) -> Indexer:
-    return Indexer(settings=Settings(_env_file=None, index_dir=tmp_path / "index"))
+    # 夹具产品 "Demo" 不在白名单：关闭索引口白名单断言，专测索引机制本身
+    return Indexer(
+        settings=Settings(
+            _env_file=None, index_dir=tmp_path / "index", whitelist_enforce_at_index=False
+        )
+    )
+
+
+def test_index_rejects_non_whitelisted_product_by_default(tmp_path):
+    """纵深防御：默认设置下白名单外产品写不进索引（Indexer 入口二次断言）。"""
+    strict = Indexer(settings=Settings(_env_file=None, index_dir=tmp_path / "strict"))
+    with pytest.raises(ValueError, match="白名单外"):
+        strict.index([_chunk(0, "内部材料内容")], FakeEmbedder())
 
 
 def test_index_writes_documents_and_metadata(indexer):

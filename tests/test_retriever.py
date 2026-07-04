@@ -36,7 +36,10 @@ CORPUS = [
 
 @pytest.fixture
 def retriever(tmp_path) -> Retriever:
-    settings = Settings(_env_file=None, index_dir=tmp_path / "index", top_k=2, recall_k=4)
+    settings = Settings(
+        _env_file=None, index_dir=tmp_path / "index", top_k=2, recall_k=4,
+        whitelist_enforce_at_index=False,  # 夹具产品 "Demo" 不在白名单
+    )
     indexer = Indexer(settings)
     embedder = KeywordEmbedder()
     indexer.index([_chunk(i, t) for i, t in enumerate(CORPUS)], embedder)

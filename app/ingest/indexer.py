@@ -10,6 +10,7 @@ from app.core.config import Settings, get_settings
 from app.core.embedding import EmbeddingClient
 from app.ingest.bm25_index import BM25Index
 from app.ingest.chunker import Chunk
+from app.ingest.governance import INGEST_WHITELIST
 
 
 class Indexer:
@@ -17,6 +18,7 @@ class Indexer:
         s = settings or get_settings()
         s.index_dir.mkdir(parents=True, exist_ok=True)
         self._index_dir = s.index_dir
+        self._enforce_whitelist = s.whitelist_enforce_at_index
         self._client = chromadb.PersistentClient(path=str(s.index_dir / "chroma"))
         self._bm25: dict[str, BM25Index] = {}
 
@@ -34,6 +36,12 @@ class Indexer:
     def index(self, chunks: list[Chunk], embedder: EmbeddingClient) -> int:
         if not chunks:
             return 0
+        if self._enforce_whitelist:
+            # 纵深防御（红线）：即使未来出现绕过 ingest 服务的写入路径
+            # （如会话上传），白名单外产品也写不进公开索引
+            bad = {c.product for c in chunks} - INGEST_WHITELIST
+            if bad:
+                raise ValueError(f"白名单外产品禁止入索引：{sorted(bad)}")
         by_strategy: dict[str, list[Chunk]] = {}
         for c in chunks:
             by_strategy.setdefault(c.strategy, []).append(c)

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     request_timeout_s: float = 30.0
     max_retries: int = 3
 
+    # 治理：Indexer.index() 入口的白名单二次断言（纵深防御）。
+    # 仅测试非白名单夹具产品时置 False，生产不得关闭。
+    whitelist_enforce_at_index: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

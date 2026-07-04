@@ -81,7 +81,7 @@
 
 - [x] 空引用即拒发：非拒答且 citations==[] 时服务端替换为拒答话术；无效引用编号计数进日志指标（pipeline.py / citations.py）
 - [x] 默认配置拒答兜底：vector_floor 向量余弦保守下限（rerank 关/降级时生效，初值 0.35 待评测校准）；生产入口锁定安全 config，自由切换移到 Playground 专用端点
-- [ ] 白名单加内容指纹：产品名 + 文件 sha256 双因子准入；`Indexer.index()` 入口二次断言 product ∈ 白名单
+- [x] 白名单加内容指纹：产品名 + 文件 sha256 双因子准入（governance.FINGERPRINTS 登记制）；deny 归一化匹配防重命名；`Indexer.index()` 入口二次断言 product ∈ 白名单
 - [ ] 清场式重入库：按 product 先删后写（Chroma delete + BM25 delete_by_product），杜绝旧版条款残留；补"块数收缩"单测
 - [ ] ingest 失败通道：单文件异常不炸批、0 页解析记 failed 不写 manifest、failed 列表 + 非零 exit code
 - [ ] 索引落盘原子化：BM25 pickle / manifest 走临时文件 + os.replace
