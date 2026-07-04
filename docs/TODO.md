@@ -79,7 +79,7 @@
 
 ### G1 红线加固（P0：可信机制必须不可绕过）
 
-- [ ] 空引用即拒发：非拒答且 citations==[] 时服务端替换为拒答话术；无效引用编号计数进日志指标（pipeline.py / citations.py）
+- [x] 空引用即拒发：非拒答且 citations==[] 时服务端替换为拒答话术；无效引用编号计数进日志指标（pipeline.py / citations.py）
 - [ ] 默认配置拒答兜底：vector/RRF 模式各设保守阈值；生产入口锁定安全 config，自由切换移到 Playground 专用端点
 - [ ] 白名单加内容指纹：产品名 + 文件 sha256 双因子准入；`Indexer.index()` 入口二次断言 product ∈ 白名单
 - [ ] 清场式重入库：按 product 先删后写（Chroma delete + BM25 delete_by_product），杜绝旧版条款残留；补"块数收缩"单测

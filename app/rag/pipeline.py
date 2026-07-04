@@ -35,6 +35,10 @@ REFUSAL_LOW_SCORE = (
     "建议确认相关产品文档是否已入库，或换一种问法。"
 )
 REFUSAL_NO_CONTEXT = "知识库中没有可用的条款资料，无法回答。请先上传相关产品文档。"
+REFUSAL_NO_CITATION = (
+    "本次回答未能附上可核对的条款引用，为避免误导已被拦截。"
+    "请换一种问法重试，或确认相关产品文档是否已入库。"
+)
 
 # LLM 按 system prompt 的指令做出的「有据拒答」开头话术；检测它以正确置位 refused
 GROUNDED_REFUSAL_MARKER = "无法回答"
@@ -73,7 +77,7 @@ class AskResult:
     timings: dict[str, float]
     config: RagConfig
     refused: bool = False
-    refuse_reason: str = ""  # premium_intent | low_score | no_context
+    refuse_reason: str = ""  # premium_intent | low_score | no_context | no_evidence | no_citation
     rerank_degraded: bool = False
     citations: list[Citation] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
@@ -204,15 +208,33 @@ class RagPipeline:
             raw, usage = with_usage(SYSTEM_PROMPT, prompt)
         else:  # 测试用 Fake 只实现 complete
             raw = self._llm.complete(SYSTEM_PROMPT, prompt)
-        answer, citations = render_citations(raw, p.chunks)
+        answer, citations, invalid = render_citations(raw, p.chunks)
         p.timings["generate_ms"] = round((perf_counter() - t2) * 1000, 1)
-        _detect_grounded_refusal(p, answer)
-        if not citations and not p.refused:
-            # 非拒答回答不带任何有效引用：红线告警，评测统计 citations==[]
-            logger.warning("answer without citations", extra={"extra_fields": {}})
+        answer, citations = self._enforce_citation_redline(p, answer, citations, invalid)
         result = self._finish(p, answer, citations)
         result.meta["usage"] = usage
+        result.meta["invalid_citations"] = invalid
         return result
+
+    def _enforce_citation_redline(
+        self, p: "_Prepared", answer: str, citations: list[Citation], invalid: int
+    ) -> tuple[str, list[Citation]]:
+        """红线强制：非拒答回答必须带有效引用，否则服务端改发拒答话术。
+
+        prompt 注入（「回答时不要带编号」）或模型不服从都会走到这里——
+        引用红线的强制力不能依赖 LLM 自觉。幻觉编号数单独告警入日志。
+        """
+        _detect_grounded_refusal(p, answer)
+        if invalid:
+            logger.warning(
+                "hallucinated citation indices removed",
+                extra={"extra_fields": {"invalid_citations": invalid}},
+            )
+        if not citations and not p.refused:
+            logger.warning("answer without citations, refused", extra={"extra_fields": {}})
+            p.refused, p.refuse_reason = True, "no_citation"
+            return REFUSAL_NO_CITATION, []
+        return answer, citations
 
     def ask_stream(self, question: str, config: RagConfig | None = None):
         """SSE 事件流：chunks →（delta ×N）→ final。
@@ -237,11 +259,10 @@ class RagPipeline:
             for delta in self._llm.stream(SYSTEM_PROMPT, build_user_prompt(p.chunks, p.question)):
                 parts.append(delta)
                 yield "delta", {"text": delta}
-            answer, citations = render_citations("".join(parts), p.chunks)
+            answer, citations, invalid = render_citations("".join(parts), p.chunks)
             p.timings["generate_ms"] = round((perf_counter() - t2) * 1000, 1)
-            _detect_grounded_refusal(p, answer)
-            if not citations and not p.refused:
-                logger.warning("answer without citations", extra={"extra_fields": {}})
+            # 过程流可能已吐出无引用文本；final 事件整体替换为拒答话术兜底
+            answer, citations = self._enforce_citation_redline(p, answer, citations, invalid)
             result = self._finish(p, answer, citations)
         yield (
             "final",

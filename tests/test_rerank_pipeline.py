@@ -32,7 +32,7 @@ class FakeRetriever:
 
 class FakeLLM:
     def complete(self, system, user):
-        return "答案。"
+        return "答案[1]。"  # 守引用红线：无引用回答会被服务端拦截改发拒答
 
 
 class FakeReranker:
@@ -88,7 +88,7 @@ def test_rerank_failure_degrades_not_crashes():
     assert not result.refused  # 降级后不做阈值拒答（粗排分数无绝对意义）
     assert result.rerank_degraded
     assert len(result.chunks) == SETTINGS.top_k  # 粗排截断到 top_k
-    assert result.answer == "答案。"
+    assert result.answer == "答案[Demo-第1页]。"
 
 
 def test_no_context_refuses():
@@ -112,7 +112,7 @@ def test_missing_reranker_degrades():
     pipe = RagPipeline(FakeRetriever(CORPUS), FakeLLM(), reranker=None, settings=SETTINGS)
     result = pipe.ask("q", RagConfig(rerank=True))
     assert result.rerank_degraded
-    assert result.answer == "答案。"
+    assert result.answer == "答案[Demo-第1页]。"
 
 
 class GroundedRefusingLLM:

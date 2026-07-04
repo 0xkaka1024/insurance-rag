@@ -32,17 +32,21 @@ def citation_label(chunk: RetrievedChunk) -> str:
 
 def render_citations(
     answer: str, chunks: list[RetrievedChunk]
-) -> tuple[str, list[Citation]]:
-    """把回答中的 [n] 替换为完整标签；返回（渲染后回答, 有效引用列表）。
+) -> tuple[str, list[Citation], int]:
+    """把回答中的 [n] 替换为完整标签；返回（渲染后回答, 有效引用列表, 无效编号数）。
 
-    无效编号（超出片段数 / 非法）直接剔除，不让幻觉编号流出。
+    无效编号（超出片段数 / 非法）剔除不外流；剔除数返回给调用方计入
+    日志与指标——幻觉编号被静默抹平会掩盖模型的引用可靠性问题。
     """
     citations: list[Citation] = []
     seen: set[int] = set()
+    invalid = 0
 
     def _sub(m: re.Match) -> str:
+        nonlocal invalid
         idx = int(m.group(1))
         if not 1 <= idx <= len(chunks):
+            invalid += 1
             return ""  # 幻觉编号，剔除
         if idx not in seen:
             seen.add(idx)
@@ -56,4 +60,4 @@ def render_citations(
         return f"[{citation_label(chunks[idx - 1])}]"
 
     rendered = _CIT_RE.sub(_sub, answer)
-    return rendered, citations
+    return rendered, citations, invalid

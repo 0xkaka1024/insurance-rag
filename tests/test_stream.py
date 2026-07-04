@@ -52,6 +52,28 @@ def test_ask_stream_premium_refusal_has_no_delta():
     assert events[-1][1]["refuse_reason"] == "premium_intent"
 
 
+class NoCiteStreamLLM:
+    def stream(self, system, user):
+        yield "等待期为"
+        yield "90天。"
+
+    def complete(self, system, user):
+        return "等待期为90天。"
+
+
+def test_ask_stream_refuses_uncited_answer_in_final():
+    """过程流可能已吐出无引用文本，final 事件必须整体替换为拒答话术。"""
+    from app.rag.pipeline import REFUSAL_NO_CITATION
+
+    pipe = RagPipeline(FakeRetriever([_chunk()]), NoCiteStreamLLM(), FakeReranker(), SETTINGS)
+    events = list(pipe.ask_stream("等待期多少天", RagConfig()))
+    final = events[-1][1]
+    assert final["refused"] is True
+    assert final["refuse_reason"] == "no_citation"
+    assert final["answer"] == REFUSAL_NO_CITATION
+    assert final["citations"] == []
+
+
 def test_ask_endpoint_streams_sse():
     app.dependency_overrides[get_pipeline] = _pipeline
     try:

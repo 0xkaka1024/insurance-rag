@@ -34,7 +34,7 @@ class FakeLLM:
 
     def complete(self, system: str, user: str) -> str:
         self.prompts.append((system, user))
-        return "等待期为90天。"
+        return "等待期为90天[1]。"  # 守引用红线：无引用会被服务端拦截
 
 
 def test_build_user_prompt_contains_chunks_and_question():
@@ -47,7 +47,7 @@ def test_build_user_prompt_contains_chunks_and_question():
 def test_pipeline_ask_returns_answer_chunks_timings():
     llm = FakeLLM()
     result = RagPipeline(FakeRetriever(), llm).ask("等待期多少天？")
-    assert result.answer == "等待期为90天。"
+    assert result.answer == "等待期为90天[Demo-第3页]。"
     assert len(result.chunks) == 1
     assert set(result.timings) == {"retrieve_ms", "generate_ms", "total_ms"}
     system, user = llm.prompts[0]
@@ -63,7 +63,7 @@ def test_ask_endpoint(monkeypatch):
         app.dependency_overrides.clear()
     assert resp.status_code == 200
     body = resp.json()
-    assert body["answer"] == "等待期为90天。"
+    assert body["answer"] == "等待期为90天[Demo-第3页]。"
     assert body["chunks"][0]["product"] == "Demo"
     assert body["timings"]["total_ms"] >= 0
     assert "retrieval_rank" in body["chunks"][0]  # 溯源字段随 API 透出（未填时为 null）
