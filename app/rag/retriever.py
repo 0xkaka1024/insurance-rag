@@ -21,6 +21,13 @@ class RetrievedChunk:
     page_end: int
     score: float
     section: str = ""  # 条号（structural 条款模式）或章节标题（简介模式），fixed 无
+    # ── 检索过程溯源（Playground 透明化）：None = 该路未命中 / 该阶段未执行 ──
+    vector_rank: int | None = None  # 向量路名次（1 起）
+    vector_score: float | None = None  # 余弦相似度
+    bm25_rank: int | None = None  # BM25 路名次（1 起）
+    bm25_score: float | None = None  # BM25 原始分
+    retrieval_rank: int | None = None  # 进入重排前的粗排位次（vector 序或 RRF 融合序）
+    rerank_score: float | None = None  # rerank 成功后回填（与 score 同值）
 
 
 def _section_of(meta: dict) -> str:
@@ -64,10 +71,12 @@ class Retriever:
             include=["documents", "metadatas", "distances"],
         )
         chunks: list[RetrievedChunk] = []
-        for chunk_id, doc, meta, dist in zip(
+        rows = zip(
             res["ids"][0], res["documents"][0], res["metadatas"][0], res["distances"][0],
             strict=True,
-        ):
+        )
+        for rank, (chunk_id, doc, meta, dist) in enumerate(rows, start=1):
+            score = 1.0 - dist  # chroma cosine distance = 1 - 相似度
             chunks.append(
                 RetrievedChunk(
                     chunk_id=chunk_id,
@@ -75,8 +84,11 @@ class Retriever:
                     product=str(meta["product"]),
                     page_start=int(meta["page_start"]),
                     page_end=int(meta["page_end"]),
-                    score=1.0 - dist,  # chroma cosine distance = 1 - 相似度
+                    score=score,
                     section=_section_of(meta),
+                    vector_rank=rank,
+                    vector_score=round(score, 6),
+                    retrieval_rank=rank,
                 )
             )
         return chunks
@@ -101,11 +113,15 @@ class Retriever:
         for cid, text, meta, _score in kw:
             payload.setdefault(cid, (text, meta))
 
+        vec_pos = {c.chunk_id: (i + 1, round(c.score, 6)) for i, c in enumerate(vec)}
+        kw_pos = {cid: (i + 1, round(s, 6)) for i, (cid, _t, _m, s) in enumerate(kw)}
+
         fused = rrf_fuse([[c.chunk_id for c in vec], [cid for cid, *_ in kw]])
         ranked = sorted(fused.items(), key=lambda kv: kv[1], reverse=True)[:k]
         out: list[RetrievedChunk] = []
-        for cid, score in ranked:
+        for fused_rank, (cid, score) in enumerate(ranked, start=1):
             text, meta = payload[cid]
+            v, b = vec_pos.get(cid), kw_pos.get(cid)
             out.append(
                 RetrievedChunk(
                     chunk_id=cid,
@@ -115,6 +131,11 @@ class Retriever:
                     page_end=int(meta["page_end"]),
                     score=round(score, 6),
                     section=_section_of(meta),
+                    vector_rank=v[0] if v else None,
+                    vector_score=v[1] if v else None,
+                    bm25_rank=b[0] if b else None,
+                    bm25_score=b[1] if b else None,
+                    retrieval_rank=fused_rank,
                 )
             )
         return out

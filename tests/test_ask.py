@@ -66,6 +66,7 @@ def test_ask_endpoint(monkeypatch):
     assert body["answer"] == "等待期为90天。"
     assert body["chunks"][0]["product"] == "Demo"
     assert body["timings"]["total_ms"] >= 0
+    assert "retrieval_rank" in body["chunks"][0]  # 溯源字段随 API 透出（未填时为 null）
     assert body["config"] == {
         "chunking": "fixed",
         "retrieval": "vector",

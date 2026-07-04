@@ -26,6 +26,13 @@ class ChunkOut(BaseModel):
     page_end: int
     score: float
     section: str = ""
+    # 检索过程溯源（Playground 透明化），与 RetrievedChunk 对应字段同义
+    vector_rank: int | None = None
+    vector_score: float | None = None
+    bm25_rank: int | None = None
+    bm25_score: float | None = None
+    retrieval_rank: int | None = None
+    rerank_score: float | None = None
 
 
 class CitationOut(BaseModel):

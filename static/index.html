@@ -43,6 +43,7 @@
   .cite:hover { border-color: var(--brand); color: var(--brand); }
   .chunk { border-top: 1px dashed var(--line); padding: 8px 0; font-size: 13px; }
   .chunk .meta { color: var(--muted); font-size: 12px; }
+  .chunk .prov { color: #4f46e5; font-size: 12px; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
   dialog { border: 1px solid var(--line); border-radius: 10px; max-width: 640px;
@@ -158,6 +159,21 @@ function readConfig(el) {
 /* ---------- 渲染工具 ---------- */
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
+/* 检索溯源行：该 chunk 在向量/BM25/粗排/rerank 各阶段的名次与分数（后端未给的字段不显示） */
+function provLine(c, pos) {
+  const parts = [];
+  if (c.vector_rank != null) parts.push(`向量 #${c.vector_rank} (${(+c.vector_score).toFixed(3)})`);
+  if (c.bm25_rank != null) parts.push(`BM25 #${c.bm25_rank} (${(+c.bm25_score).toFixed(2)})`);
+  if (c.retrieval_rank != null) parts.push(`粗排 #${c.retrieval_rank}`);
+  if (c.rerank_score != null) {
+    let move = "";
+    if (c.retrieval_rank != null && pos != null && c.retrieval_rank !== pos)
+      move = c.retrieval_rank > pos ? ` ↑${c.retrieval_rank - pos}` : ` ↓${pos - c.retrieval_rank}`;
+    parts.push(`rerank ${(+c.rerank_score).toFixed(3)}${move}`);
+  }
+  return parts.length ? `<div class="prov">${parts.map(esc).join(" · ")}</div>` : "";
+}
+
 function resultCard(data) {
   const div = document.createElement("div");
   div.className = "card";
@@ -172,10 +188,11 @@ function resultCard(data) {
   const cites = (data.citations || []).map(c =>
     `<span class="cite" onclick="showChunk('${esc(c.chunk_id)}')">[${esc(c.label)}]</span>`).join("");
 
-  const chunks = (data.chunks || []).map(c => `
+  const chunks = (data.chunks || []).map((c, i) => `
     <div class="chunk" id="chunk-${esc(c.chunk_id)}">
       <div class="meta">${esc(c.chunk_id)} · ${esc(c.product)}${c.section ? " · " + esc(c.section) : ""}
         · 第${c.page_start}${c.page_end !== c.page_start ? "-" + c.page_end : ""}页 · score ${(+c.score).toFixed(3)}</div>
+      ${provLine(c, i + 1)}
       <div>${esc(c.text)}</div>
     </div>`).join("");
 

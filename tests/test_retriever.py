@@ -72,6 +72,28 @@ def test_hybrid_surfaces_exact_term_match(retriever):
     assert any(c.chunk_id == "Demo:fixed:0003" for c in chunks)
 
 
+def test_vector_sets_provenance(retriever):
+    chunks = retriever.retrieve("等待期多少天", mode="vector")
+    top = chunks[0]
+    assert top.vector_rank == 1
+    assert top.retrieval_rank == 1
+    assert top.vector_score == round(top.score, 6)
+    assert top.bm25_rank is None and top.bm25_score is None  # 纯向量路无 BM25 溯源
+    assert top.rerank_score is None  # 未重排
+    assert [c.retrieval_rank for c in chunks] == [1, 2]
+
+
+def test_hybrid_sets_both_path_provenance(retriever):
+    chunks = retriever.retrieve("等待期", mode="hybrid")
+    top = chunks[0]  # 向量与 BM25 双路命中的块，两路名次都应可见
+    assert top.chunk_id == "Demo:fixed:0000"
+    assert top.vector_rank == 1
+    assert top.bm25_rank == 1
+    assert top.bm25_score > 0
+    assert top.vector_score is not None
+    assert [c.retrieval_rank for c in chunks] == [1, 2]  # RRF 融合序
+
+
 def test_unknown_mode_raises(retriever):
     with pytest.raises(ValueError):
         retriever.retrieve("等待期", mode="magic")

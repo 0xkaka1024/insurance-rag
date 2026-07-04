@@ -100,7 +100,7 @@ class RagPipeline:
         if self._reranker is None:
             raise RerankUnavailable("no reranker configured")
         pairs = self._reranker.rerank(question, [c.text for c in chunks], top_n=s.top_k)
-        return [replace(chunks[i], score=score) for i, score in pairs], False
+        return [replace(chunks[i], score=score, rerank_score=score) for i, score in pairs], False
 
     def _prepare(self, question: str, config: RagConfig | None) -> "_Prepared":
         """路由 → 检索 → 重排/阈值：ask 与 ask_stream 共用的生成前阶段。"""

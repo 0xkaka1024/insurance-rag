@@ -63,6 +63,14 @@ def test_rerank_reorders_and_rescores():
     assert "rerank_ms" in result.timings
 
 
+def test_rerank_backfills_rerank_score_provenance():
+    reranker = FakeReranker(pairs=[(3, 0.92), (0, 0.55)])
+    pipe = RagPipeline(FakeRetriever(CORPUS), FakeLLM(), reranker, SETTINGS)
+    result = pipe.ask("q", RagConfig(rerank=True))
+    assert [c.rerank_score for c in result.chunks] == [0.92, 0.55]
+    assert all(c.score == c.rerank_score for c in result.chunks)  # score 与 rerank 分同步
+
+
 def test_low_rerank_score_refuses():
     reranker = FakeReranker(pairs=[(0, 0.12), (1, 0.08)])
     pipe = RagPipeline(FakeRetriever(CORPUS), FakeLLM(), reranker, SETTINGS)
