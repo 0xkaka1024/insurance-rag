@@ -6,10 +6,14 @@ FROM python:3.11-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    STARTUP_REQUIRE_INDEX=true
+    STARTUP_REQUIRE_INDEX=true \
+    RATE_LIMIT_PER_MINUTE=20 \
+    DAILY_REQUEST_BUDGET=300
 
-# 生产：索引未就绪直接 fail-fast（容器起不来，平台显性报错），
-# 不允许「索引缺失却静默把所有问题拒答」的假运行状态。
+# 生产硬化（本地/CI 默认关闭，仅镜像开启）：
+# - STARTUP_REQUIRE_INDEX：索引未就绪 fail-fast，不允许静默拒答的假运行
+# - RATE_LIMIT / DAILY_BUDGET：防公网脚本烧 API 账单；转 public 前另在
+#   Space Secrets 配 API_AUTH_TOKEN 可再加一道 Bearer 鉴权
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt

@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     # 本地/CI 默认 false（测试不需要真实索引）；生产镜像在 Dockerfile 里置 true。
     startup_require_index: bool = False
 
+    # ── 公开部署防滥用（G3）。默认全关：本地/CI 零影响；生产在 Dockerfile 开启。
+    # 转 public 前这是唯一挡住「任意脚本烧光 API 账单」的防线。
+    rate_limit_per_minute: int = 0  # 每 IP 每分钟对昂贵端点的请求上限；0=关
+    daily_request_budget: int = 0  # 全站每日昂贵请求总额度（成本熔断）；0=关
+    llm_max_tokens: int = 1024  # 单次回答 token 上限：成本上限的最后一环
+    # 可选 Bearer 鉴权：非空时昂贵端点要求 Authorization: Bearer <token>。
+    # 值走环境变量/Space Secrets，绝不入代码（红线）
+    api_auth_token: str = ""
+
     # 治理：Indexer.index() 入口的白名单二次断言（纵深防御）。
     # 仅测试非白名单夹具产品时置 False，生产不得关闭。
     whitelist_enforce_at_index: bool = True

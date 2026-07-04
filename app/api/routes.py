@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.api.guard import abuse_guard
 from app.core.config import get_settings
 from app.core.logging import request_id_var
 from app.ingest.indexer import Indexer
@@ -266,7 +267,7 @@ def _serve_ask(pipeline: RagPipeline, req: AskRequest, config: RagConfig):
     )
 
 
-@router.post("/retrieve", response_model=RetrieveResponse)
+@router.post("/retrieve", response_model=RetrieveResponse, dependencies=[Depends(abuse_guard)])
 def retrieve(req: RetrieveRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]):
     """只检索不生成：Playground 调优检索时省去 LLM 延迟与费用。"""
     result = pipeline.retrieve_only(req.question, req.config)
@@ -281,7 +282,7 @@ def retrieve(req: RetrieveRequest, pipeline: Annotated[RagPipeline, Depends(get_
     )
 
 
-@router.post("/ask", response_model=AskResponse)
+@router.post("/ask", response_model=AskResponse, dependencies=[Depends(abuse_guard)])
 def ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]):
     """生产问答入口：config 服务端锁定（红线：安全相关开关不由调用方决定）。
 
@@ -290,7 +291,9 @@ def ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]
     return _serve_ask(pipeline, req, _production_config())
 
 
-@router.post("/playground/ask", response_model=AskResponse)
+@router.post(
+    "/playground/ask", response_model=AskResponse, dependencies=[Depends(abuse_guard)]
+)
 def playground_ask(req: AskRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]):
     """Playground 实验入口：honor 调用方 config，用于策略对照与调参。"""
     return _serve_ask(pipeline, req, req.config)

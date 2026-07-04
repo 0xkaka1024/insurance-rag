@@ -22,6 +22,7 @@ class LLMClient:
             max_retries=s.max_retries,
         )
         self.model = s.llm_model
+        self._max_tokens = s.llm_max_tokens  # 单次回答成本上限（G3 防滥用）
 
     def complete(self, system: str, user: str) -> str:
         text, _ = self.complete_with_usage(system, user)
@@ -33,6 +34,7 @@ class LLMClient:
             model=self.model,
             messages=self._messages(system, user),
             temperature=0.2,  # 条款问答要事实性，压低随机性
+            max_tokens=self._max_tokens,
         )
         usage = {
             "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0,
@@ -48,6 +50,7 @@ class LLMClient:
             model=self.model,
             messages=self._messages(system, user),
             temperature=0.2,
+            max_tokens=self._max_tokens,
             stream=True,
         )
         for chunk in resp:
