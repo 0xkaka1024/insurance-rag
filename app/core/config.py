@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     request_timeout_s: float = 30.0
     max_retries: int = 3
 
+    # rerank 专属容错：pipeline 有零成本降级兜底（粗排截断），等不起全局
+    # 30s×N 重试周期（实测最坏 ~127s 才降级）。短超时 + 至多 1 次重试 +
+    # 连续 3 次失败熔断（冷却期内直接降级，不再逐请求耗完重试）。
+    rerank_timeout_s: float = 5.0
+    rerank_max_retries: int = 1
+    rerank_breaker_cooldown_s: float = 60.0
+
     # 启动自检：为 true 时索引未就绪（collection 空 / BM25 缺）直接 fail-fast，
     # 容器起不来（部署平台显性报错），而非静默把所有问题拒答。
     # 本地/CI 默认 false（测试不需要真实索引）；生产镜像在 Dockerfile 里置 true。

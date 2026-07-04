@@ -104,7 +104,24 @@ class RagPipeline:
         if self._reranker is None:
             raise RerankUnavailable("no reranker configured")
         pairs = self._reranker.rerank(question, [c.text for c in chunks], top_n=s.top_k)
-        return [replace(chunks[i], score=score, rerank_score=score) for i, score in pairs], False
+        # 不信任外部 API 响应：越界/重复 index 过滤（否则 IndexError 变 500
+        # 且绕过降级路径）、按分数显式重排（阈值判断依赖降序）、截断 top_k
+        valid: list[tuple[int, float]] = []
+        seen: set[int] = set()
+        for i, score in pairs:
+            if 0 <= i < len(chunks) and i not in seen:
+                valid.append((i, score))
+                seen.add(i)
+        if len(valid) != len(pairs):
+            logger.warning(
+                "rerank returned invalid indices",
+                extra={"extra_fields": {"returned": len(pairs), "valid": len(valid)}},
+            )
+        if not valid:
+            raise RerankUnavailable("rerank returned no valid indices")
+        valid.sort(key=lambda p: p[1], reverse=True)
+        valid = valid[: s.top_k]
+        return [replace(chunks[i], score=score, rerank_score=score) for i, score in valid], False
 
     def _prepare(self, question: str, config: RagConfig | None) -> "_Prepared":
         """路由 → 检索 → 重排/阈值：ask 与 ask_stream 共用的生成前阶段。"""

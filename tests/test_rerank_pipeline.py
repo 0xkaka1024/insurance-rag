@@ -109,6 +109,32 @@ def test_rerank_reorders_and_rescores():
     assert "rerank_ms" in result.timings
 
 
+def test_rerank_invalid_indices_filtered_and_resorted():
+    """不信任 API 响应：越界(7)与重复(0)剔除、乱序按分数重排，不炸 500。"""
+    reranker = FakeReranker(pairs=[(0, 0.4), (7, 0.99), (3, 0.8), (0, 0.2)])
+    pipe = RagPipeline(FakeRetriever(CORPUS), FakeLLM(), reranker, SETTINGS)
+    result = pipe.ask("q", RagConfig(rerank=True))
+    assert not result.rerank_degraded
+    assert [c.chunk_id for c in result.chunks] == ["Demo:fixed:0003", "Demo:fixed:0000"]
+    assert [c.score for c in result.chunks] == [0.8, 0.4]  # 显式降序，阈值判断可依赖
+
+
+def test_rerank_all_invalid_indices_degrades():
+    reranker = FakeReranker(pairs=[(9, 0.9)])  # 全部越界 → 视同 rerank 不可用
+    pipe = RagPipeline(FakeRetriever(CORPUS), FakeLLM(), reranker, SETTINGS)
+    result = pipe.ask("q", RagConfig(rerank=True))
+    assert result.rerank_degraded
+    assert len(result.chunks) == SETTINGS.top_k  # 粗排截断兜底
+
+
+def test_rerank_empty_result_degrades_not_empties_context():
+    reranker = FakeReranker(pairs=[])  # 空结果不再清空候选，走降级
+    pipe = RagPipeline(FakeRetriever(CORPUS), FakeLLM(), reranker, SETTINGS)
+    result = pipe.ask("q", RagConfig(rerank=True))
+    assert result.rerank_degraded
+    assert len(result.chunks) == SETTINGS.top_k
+
+
 def test_rerank_backfills_rerank_score_provenance():
     reranker = FakeReranker(pairs=[(3, 0.92), (0, 0.55)])
     pipe = RagPipeline(FakeRetriever(CORPUS), FakeLLM(), reranker, SETTINGS)
