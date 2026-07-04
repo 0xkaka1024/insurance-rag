@@ -48,7 +48,7 @@ def main() -> int:
         else ingest_files(files, force=args.force)
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
+    return 1 if result.get("failed") else 0  # 失败文件存在 → 非零，cron/CI 可感知
 
 
 if __name__ == "__main__":

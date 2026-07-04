@@ -68,6 +68,7 @@ def ingest_files(
     ingested: list[str] = []
     rejected: list[str] = []
     skipped: list[str] = []
+    failed: list[str] = []
     for path in paths:
         digest = _sha256(path)
         ok, reason = check_ingestable(path, digest=digest, fingerprints=fingerprints)
@@ -79,26 +80,37 @@ def ingest_files(
             logger.info("skip unchanged %s", path.name)
             skipped.append(path.name)
             continue
-        pages = parse_pdf(path)
-        by_strategy: dict[str, list[Chunk]] = {ch.name: ch.split(pages) for ch in chunkers}
-        # 清场式重入库（红线）：先删该产品旧块再写，新版块数少于旧版时
-        # 尾部旧 chunk 不再残留（残留会引用已废止条款）。
-        # 注：purge 与 index 之间无事务，embedding 失败会短暂缺该产品——
-        # 蓝绿索引切换在 backlog（G4 collection 版本 manifest）。
-        indexer.purge_product(product_from_filename(path))
-        for chunks in by_strategy.values():
-            indexed_chunks += indexer.index(chunks, embedder)
-        save_report(
-            build_report(
-                product=product_from_filename(path),
-                filename=path.name,
-                sha256=digest,
-                total_pages=page_count(path),
-                pages=pages,
-                chunks_by_strategy=by_strategy,
-            ),
-            s,
-        )
+        # 失败通道：单文件异常/零解析只记 failed，不炸整批；
+        # 不写 manifest（下次运行重试），不写报告（避免"成功"假象）。
+        try:
+            pages = parse_pdf(path)
+            if not pages:
+                logger.error("parse produced no text for %s", path.name)
+                failed.append(f"{path.name}: 解析 0 页文本（扫描件/加密/空文件？），未入库")
+                continue
+            by_strategy: dict[str, list[Chunk]] = {ch.name: ch.split(pages) for ch in chunkers}
+            # 清场式重入库（红线）：先删该产品旧块再写，新版块数少于旧版时
+            # 尾部旧 chunk 不再残留（残留会引用已废止条款）。
+            # 注：purge 与 index 之间无事务，embedding 失败会短暂缺该产品——
+            # 蓝绿索引切换在 backlog（G4 collection 版本 manifest）。
+            indexer.purge_product(product_from_filename(path))
+            for chunks in by_strategy.values():
+                indexed_chunks += indexer.index(chunks, embedder)
+            save_report(
+                build_report(
+                    product=product_from_filename(path),
+                    filename=path.name,
+                    sha256=digest,
+                    total_pages=page_count(path),
+                    pages=pages,
+                    chunks_by_strategy=by_strategy,
+                ),
+                s,
+            )
+        except Exception as exc:
+            logger.exception("ingest failed for %s", path.name)
+            failed.append(f"{path.name}: {type(exc).__name__}: {exc}")
+            continue
         manifest[path.name] = digest
         _save_manifest(manifest_path, manifest)  # 每文件落盘，中断后已完成的不重做
         ingested.append(path.name)
@@ -108,7 +120,7 @@ def ingest_files(
             extra={"extra_fields": {"pages": len(pages), "strategies": len(chunkers)}},
         )
     return {"files": len(ingested), "chunks": indexed_chunks, "ingested": ingested,
-            "rejected": rejected, "skipped": skipped}
+            "rejected": rejected, "skipped": skipped, "failed": failed}
 
 
 def rebuild_reports(
@@ -126,6 +138,7 @@ def rebuild_reports(
     chunkers = chunkers or [FixedChunker(), StructuralChunker()]
     written: list[str] = []
     rejected: list[str] = []
+    failed: list[str] = []
     for path in paths:
         digest = _sha256(path)
         ok, reason = check_ingestable(path, digest=digest, fingerprints=fingerprints)
@@ -133,18 +146,27 @@ def rebuild_reports(
             logger.warning("reject %s: %s", path.name, reason)
             rejected.append(f"{path.name}: {reason}")
             continue
-        pages = parse_pdf(path)
-        by_strategy = {ch.name: ch.split(pages) for ch in chunkers}
-        save_report(
-            build_report(
-                product=product_from_filename(path),
-                filename=path.name,
-                sha256=digest,
-                total_pages=page_count(path),
-                pages=pages,
-                chunks_by_strategy=by_strategy,
-            ),
-            s,
-        )
+        try:
+            pages = parse_pdf(path)
+            if not pages:
+                failed.append(f"{path.name}: 解析 0 页文本（扫描件/加密/空文件？）")
+                continue
+            by_strategy = {ch.name: ch.split(pages) for ch in chunkers}
+            save_report(
+                build_report(
+                    product=product_from_filename(path),
+                    filename=path.name,
+                    sha256=digest,
+                    total_pages=page_count(path),
+                    pages=pages,
+                    chunks_by_strategy=by_strategy,
+                ),
+                s,
+            )
+        except Exception as exc:
+            logger.exception("report rebuild failed for %s", path.name)
+            failed.append(f"{path.name}: {type(exc).__name__}: {exc}")
+            continue
         written.append(path.name)
-    return {"reports": len(written), "written": written, "rejected": rejected}
+    return {"reports": len(written), "written": written, "rejected": rejected,
+            "failed": failed}

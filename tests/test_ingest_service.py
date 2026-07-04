@@ -151,6 +151,49 @@ def test_reingest_skipped_by_hash_and_forced(tmp_path):
     assert forced["ingested"] == ["newVHISmedical-tc.pdf"]
 
 
+def test_corrupt_file_fails_without_aborting_batch(tmp_path):
+    """失败通道：坏文件记入 failed，不炸整批；不写 manifest（下次重试）。"""
+    bad = tmp_path / "newVHISmedical-tc.pdf"
+    bad.write_bytes(b"not a pdf at all")
+    good = tmp_path / "OnYourSideInsurancePlan2_tc.pdf"
+    good.write_bytes(make_pdf("Critical illness benefit terms."))
+    settings = _settings(tmp_path)
+
+    result = ingest_files(
+        [bad, good], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings,
+        fingerprints={**_fp(bad), **_fp(good)},
+    )
+    assert result["ingested"] == ["OnYourSideInsurancePlan2_tc.pdf"]  # 好文件照常入库
+    assert len(result["failed"]) == 1
+    assert "newVHISmedical-tc.pdf" in result["failed"][0]
+    manifest = json.loads((settings.index_dir / "ingest_manifest.json").read_text())
+    assert "newVHISmedical-tc.pdf" not in manifest  # 失败不写 manifest
+
+
+def test_zero_page_parse_recorded_as_failed(tmp_path):
+    """0 页解析不算成功：不写 manifest、不写报告、计入 failed。"""
+    empty = tmp_path / "newVHISmedical-tc.pdf"
+    empty.write_bytes(make_pdf([]))  # 一页但无任何文本
+    settings = _settings(tmp_path)
+
+    result = ingest_files(
+        [empty], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings,
+        fingerprints=_fp(empty),
+    )
+    assert result["ingested"] == []
+    assert len(result["failed"]) == 1
+    assert "0 页" in result["failed"][0]
+    assert not (settings.index_dir / "ingest_manifest.json").exists()
+    assert not (settings.index_dir / "reports" / "newVHISmedical.json").exists()
+
+    retry = ingest_files(  # 未写 manifest → 下次运行不会被 hash 跳过
+        [empty], indexer=RecordingIndexer(), embedder=NullEmbedder(), settings=settings,
+        fingerprints=_fp(empty),
+    )
+    assert retry["skipped"] == []
+    assert len(retry["failed"]) == 1
+
+
 def test_reingest_shrinking_file_leaves_no_stale_chunks(tmp_path):
     """清场式重入库：新版块数少于旧版时，尾部旧 chunk 必须消失（真索引验证）。"""
     from app.core.config import Settings
