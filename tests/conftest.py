@@ -5,7 +5,7 @@
 
 import pytest
 
-from app.api.routes import get_pipeline
+from app.api.routes import get_indexer, get_pipeline
 from app.core.config import get_settings
 
 
@@ -15,6 +15,8 @@ def _hermetic_env(monkeypatch):
         monkeypatch.setenv(var, "")
     get_settings.cache_clear()
     get_pipeline.cache_clear()
+    get_indexer.cache_clear()
     yield
     get_settings.cache_clear()
     get_pipeline.cache_clear()
+    get_indexer.cache_clear()

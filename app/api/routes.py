@@ -8,6 +8,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
+from app.ingest.indexer import Indexer
+from app.ingest.report import reports_dir
 from app.rag.pipeline import RagConfig, RagPipeline, build_pipeline
 
 router = APIRouter()
@@ -79,9 +81,74 @@ def get_pipeline() -> RagPipeline:
         return build_pipeline(get_settings())
 
 
+@lru_cache
+def get_indexer() -> Indexer:
+    with _build_lock:  # 与 get_pipeline 同理：冷启动并发防 Chroma 竞态
+        return Indexer(get_settings())
+
+
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@router.get("/corpus")
+def corpus() -> dict:
+    """语料总览：每个产品的解析质量与切片统计（不含逐块明细）。"""
+    d = reports_dir(get_settings())
+    docs = []
+    for p in sorted(d.glob("*.json")) if d.is_dir() else []:
+        r = json.loads(p.read_text(encoding="utf-8"))
+        docs.append(
+            {
+                "product": r.get("product", p.stem),
+                "file": r.get("file", ""),
+                "total_pages": r.get("total_pages", 0),
+                "parsed_pages": r.get("parsed_pages", 0),
+                "empty_pages": r.get("empty_pages", []),
+                "generated_at": r.get("generated_at", ""),
+                "strategies": {
+                    name: {k: v for k, v in entry.items() if k != "chunks"}
+                    for name, entry in r.get("strategies", {}).items()
+                },
+            }
+        )
+    return {"documents": docs}
+
+
+@router.get("/corpus/{product}/chunks")
+def corpus_chunks(
+    product: str,
+    indexer: Annotated[Indexer, Depends(get_indexer)],
+    strategy: str = "structural",
+) -> dict:
+    """切片浏览器数据：报告里的顺序与 lint 标记 + Chroma 里的块全文。"""
+    if strategy not in ("fixed", "structural"):
+        raise HTTPException(status_code=422, detail=f"unknown strategy: {strategy}")
+    d = reports_dir(get_settings())
+    valid = {p.stem: p for p in d.glob("*.json")} if d.is_dir() else {}
+    if product not in valid:  # 白名单校验，天然阻断路径穿越
+        raise HTTPException(status_code=404, detail="corpus report not found")
+    report = json.loads(valid[product].read_text(encoding="utf-8"))
+    entry = report.get("strategies", {}).get(strategy)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"no {strategy} chunks for {product}")
+
+    recs = entry.get("chunks", [])
+    texts: dict[str, str] = {}
+    ids = [r["chunk_id"] for r in recs]
+    if ids:
+        got = indexer.collection(strategy).get(ids=ids, include=["documents"])
+        texts = dict(zip(got["ids"], got["documents"], strict=False))
+    chunks = [{**r, "text": texts.get(r["chunk_id"], "")} for r in recs]
+    return {
+        "product": product,
+        "strategy": strategy,
+        "n_chunks": entry.get("n_chunks", len(chunks)),
+        "clause_coverage": entry.get("clause_coverage"),
+        "flag_counts": entry.get("flag_counts", {}),
+        "chunks": chunks,
+    }
 
 
 @router.get("/eval_results")
