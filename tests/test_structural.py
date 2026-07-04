@@ -49,6 +49,39 @@ def test_brochure_mode_splits_on_headings():
     assert "CT扫描" not in hosp.text  # 下一节内容不混入
 
 
+HK_NUMBERING_DOC = """第一部 保障范围
+1.1等候期为90日，等候期内确诊的疾病不获赔偿，本节其余条文照常适用。
+1.2 冷静期为21日，期内退保获全数退还保费，不计利息与手续费用。
+第2节 责任免除
+２．投保前已存在病症不属保障范围，除非已于投保时如实申报并获接受。
+1.5倍基本保额将于确诊严重疾病时一次性给付，作为额外保障利益。
+"""
+
+
+def test_hk_numbering_variants_recognized():
+    chunks = StructuralChunker().split(_pages(HK_NUMBERING_DOC))
+    clauses = [c.meta.get("clause", "") for c in chunks]
+    chapters = {c.meta.get("chapter", "") for c in chunks}
+    assert any(m.startswith("1.1等候期") for m in clauses)  # 无空格数字编号
+    assert any(m.startswith("1.2") for m in clauses)
+    assert any(m.startswith("２．") for m in clauses)  # 全角数字与句点
+    assert any(ch.startswith("第一部") for ch in chapters)  # 「部」章级
+    assert any(ch.startswith("第2节") for ch in chapters)  # 「节」章级
+    assert not any(m.startswith("1.5倍") for m in clauses)  # 数值+单位不是条号
+
+
+def test_unit_number_line_not_clause():
+    from app.ingest.structural import CLAUSE_RE
+
+    assert CLAUSE_RE.match("1.1等候期")
+    assert CLAUSE_RE.match("1.1 等候期")
+    assert CLAUSE_RE.match("3.2.1 附加保障")
+    assert CLAUSE_RE.match("1、天使综合症")
+    assert not CLAUSE_RE.match("1.5倍基本保额")
+    assert not CLAUSE_RE.match("3年后保证现金价值")  # 「3年」计数不误判……
+    assert CLAUSE_RE.match("3.年度限额")  # ……但「3.」编号仍命中
+
+
 def test_heading_heuristic():
     assert _is_heading("住院保障")
     assert _is_heading("其他计划特点")

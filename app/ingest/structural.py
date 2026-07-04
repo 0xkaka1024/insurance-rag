@@ -13,8 +13,19 @@ from dataclasses import dataclass
 from app.ingest.chunker import Chunk, FixedChunker
 from app.ingest.parser import Page
 
-CHAPTER_RE = re.compile(r"^第\s*[一二三四五六七八九十百0-9]+\s*章")
-CLAUSE_RE = re.compile(r"^(第\s*[一二三四五六七八九十百0-9]+\s*条|\d+(\.\d+)+\s|\d+\.\s)")
+# 编号召回决定引用主轨覆盖率（语料报告 clause_coverage）。香港保单实际用法：
+# 章级「第X章/部/節(节)/篇」；条级「第X条」「1.1 等候期」「1.1等候期」（无空格）、
+# 全角数字/句点、「1、」顿号枚举。PDF 提取常丢空格，编号后接中文必须能命中。
+# 小数形态（1.1）需与「1.5倍/2.5万」这类数值+量词区分：量词字符负向排除，
+# 只作用于小数形态——枚举形态「4.次级严重疾病」的次/年等字头是真条目，不受限。
+# 括号序号（一）/(a) 是条内子项标记，作切分点会把条款打碎，故不进 CLAUSE_RE。
+_UNIT_CHARS = "倍万萬亿億元港成"
+CHAPTER_RE = re.compile(r"^第\s*[一二三四五六七八九十百0-9０-９]+\s*[章部节篇]")
+CLAUSE_RE = re.compile(
+    rf"^(?:第\s*[一二三四五六七八九十百0-9０-９]+\s*条"
+    rf"|\d+(?:\.\d+)+\s*(?=$|[\s（(]|(?![{_UNIT_CHARS}])[一-鿿])"
+    r"|[0-9０-９]+[.、．]\s*(?=$|[\s（(]|[一-鿿]))"
+)
 
 _HEADING_MAX_LEN = 20
 _SENTENCE_PUNCT = "。；，：、"
