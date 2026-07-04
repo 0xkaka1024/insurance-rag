@@ -95,6 +95,7 @@
 - [x] 逐题容错（error 字段不进分母）+ 每配置立即落盘（partial 标记）+ `--limit`/`--dry-run` 冒烟；文件名加时分秒、git hash 带 -dirty、payload 记模型/阈值/数据集 sha/语料指纹
 - [ ] **（人工，kaka 约半天）** 定稿 dataset.jsonl：`python eval/build_dataset.py` 出草稿（配额+跨产品对抗题+comparison 模板已内置）→ 逐条对照 PDF 原文核对 ground_truth → 删 needs_review 改名 dataset.jsonl（loader 强制门禁，未核对跑不了）
 - [ ] 跑通 8 配置全量评测（约 ¥5-10），第一份结果入 git；顺手校准 refuse_threshold 与 vector_floor
+- [ ] **评测前先做**查询侧 embedding 缓存（key=模型名+归一化问题，进程内 LRU）：8 配置×50 题只有 50 个独立问题，7/8 的查询 embedding 可省；与切片策略无关不会白做（2026-07-04 决策：推迟到评测前，入库侧缓存等策略定型）
 
 ### G3 公开部署前（P0/P1）
 
