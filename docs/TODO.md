@@ -5,11 +5,11 @@
 ## Phase 0：开工前准备（半天，全部就绪再写代码）
 
 - [x] **DeepSeek API key**：platform.deepseek.com 充值 ¥10 起（评测 50 题 × 8 配置约消耗 ¥5-10）
-- [ ] **SiliconFlow API key**：siliconflow.cn（bge-m3 embedding + bge-reranker，注册送额度）
+- [x] **SiliconFlow API key**：实际使用国际站 cloud.siliconflow.com（Qwen3 系，见 .env.example）
 - [x] **DashScope API key**（P1 才需要）：Qwen-VL 表格解析 + qwen-plus 对比
 - [x] **条款 PDF ×3**：AIA 香港官网产品页下载，建议组合：重疾（如「爱伴航」系列）+ 自愿医保 + 储蓄/寿险各 1 款；存入 `data/raw/`，文件名规范：`产品名_版本.pdf`
 - [x] **GitHub 仓库**：新建 public repo `insurance-rag`，首个 commit 就是这三份 docs（commit 历史即工作证明）
-- [ ] **Hugging Face 账号**：注册 + 新建 Docker 类型 Space（占位即可）
+- [x] **Hugging Face 账号**：0xkaka，Space `0xkaka/insurance-rag`（Docker 类型，2026-07-04 建）
 - [x] **Python 3.11 venv**：`requirements.txt` 初版（fastapi/uvicorn/chromadb/rank_bm25/jieba/pdfplumber/openai/ragas/python-dotenv）
 
 ## 工程约定：Git 同步与测试（贯穿每一天）
@@ -64,7 +64,7 @@
 ## D6：部署 + 展示物料
 
 - [ ] Dockerfile（单容器：uvicorn + 静态文件；索引文件打进镜像或启动时构建）
-- [ ] 部署 HF Spaces，验证公网可访问
+- [x] 部署 HF Spaces（2026-07-04 上线，**private** 先行；转 public 前须过 G3 门槛：限流/成本熔断/SSE error）；发版用 `bash scripts/deploy_hf.sh`（worktree + LFS 打包索引，勿手动 checkout 部署分支）
 - [ ] README：一句话定位 + 架构图 + Playground 截图 + **评测数字表** + 设计决策(为什么 Chroma/为什么拒答/为什么 API rerank) + v2 Roadmap
 - [ ] 简历新增本项目条目（技术栈+架构+评测数字），联系方式行加 GitHub 与 demo 链接
 - **当日验收**：手机打开 demo 链接能完整走一遍问答；开始投递

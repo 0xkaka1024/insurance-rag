@@ -55,10 +55,9 @@ def check_pushable(rel_path: str) -> Check:
     return Check(
         f"{rel_path} 会随 push 上传",
         tracked,
-        "被 gitignore 且未 force-add：HF 构建会在 COPY data/index 处失败。修复二选一：\n"
-        "      · git add -f data/index && 提交（索引进 git 历史）\n"
-        "      · 或先 push 代码，再到 Space 的 Files 页把 data/index 拖拽上传",
-        hard=False,  # 走 web 上传也可行，故只响亮告警不算硬失败
+        "被 gitignore：直接 git push 不含索引，HF 构建会在 COPY data/index 处失败。\n"
+        "      标准发版路径：bash scripts/deploy_hf.sh（临时 worktree 自动经 LFS 打包索引）",
+        hard=False,  # deploy_hf.sh 流程下该告警属预期，不算硬失败
     )
 
 
