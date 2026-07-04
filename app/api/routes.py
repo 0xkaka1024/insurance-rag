@@ -41,6 +41,21 @@ class CitationOut(BaseModel):
     chunk_id: str
 
 
+class RetrieveRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    config: RagConfig = RagConfig()
+
+
+class RetrieveResponse(BaseModel):
+    chunks: list[ChunkOut]
+    timings: dict[str, float]
+    config: RagConfig
+    refused: bool
+    refuse_reason: str
+    rerank_degraded: bool
+    answer: str = ""  # 拒答时携带话术；只检索模式不含生成内容
+
+
 class AskResponse(BaseModel):
     answer: str
     chunks: list[ChunkOut]
@@ -95,6 +110,21 @@ def configs() -> dict:
 def _sse(pipeline: RagPipeline, req: AskRequest):
     for event, data in pipeline.ask_stream(req.question, req.config):
         yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.post("/retrieve", response_model=RetrieveResponse)
+def retrieve(req: RetrieveRequest, pipeline: Annotated[RagPipeline, Depends(get_pipeline)]):
+    """只检索不生成：Playground 调优检索时省去 LLM 延迟与费用。"""
+    result = pipeline.retrieve_only(req.question, req.config)
+    return RetrieveResponse(
+        chunks=[ChunkOut(**vars(c)) for c in result.chunks],
+        timings=result.timings,
+        config=result.config,
+        refused=result.refused,
+        refuse_reason=result.refuse_reason,
+        rerank_degraded=result.rerank_degraded,
+        answer=result.answer,
+    )
 
 
 @router.post("/ask", response_model=AskResponse)

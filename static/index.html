@@ -85,6 +85,7 @@
       <div class="row">
         <input type="text" id="pg-q" placeholder="同一问题，两套配置左右对照"
                onkeydown="if(event.key==='Enter')Playground.run()">
+        <label class="dim"><input type="checkbox" id="pg-retrieve-only">只检索（不生成，快且免 LLM 费用）</label>
         <button class="primary" id="pg-send" onclick="Playground.run()">对比</button>
       </div>
     </div>
@@ -174,12 +175,13 @@ function provLine(c, pos) {
   return parts.length ? `<div class="prov">${parts.map(esc).join(" · ")}</div>` : "";
 }
 
-function resultCard(data) {
+function resultCard(data, opts = {}) {
   const div = document.createElement("div");
   div.className = "card";
   const t = data.timings || {};
   const badges = [];
   if (data.refused) badges.push(`<span class="badge warn">拒答 · ${esc(data.refuse_reason)}</span>`);
+  else if (opts.retrieveOnly) badges.push(`<span class="badge">仅检索</span>`);
   else badges.push(`<span class="badge ok">已回答</span>`);
   if (data.rerank_degraded) badges.push(`<span class="badge warn">rerank 降级</span>`);
   for (const k of ["retrieve_ms", "rerank_ms", "generate_ms", "total_ms"])
@@ -200,7 +202,7 @@ function resultCard(data) {
     <div>${badges.join("")}</div>
     <div class="answer" data-role="answer">${esc(data.answer || "")}</div>
     <div data-role="cites">${cites}</div>
-    <details><summary>检索到的 ${data.chunks ? data.chunks.length : 0} 个片段</summary>${chunks}</details>`;
+    <details${opts.retrieveOnly ? " open" : ""}><summary>检索到的 ${data.chunks ? data.chunks.length : 0} 个片段</summary>${chunks}</details>`;
   window._chunkStore = window._chunkStore || {};
   (data.chunks || []).forEach(c => window._chunkStore[c.chunk_id] = c);
   return div;
@@ -288,19 +290,20 @@ const Playground = {
     if (!q) return;
     const btn = document.getElementById("pg-send");
     btn.disabled = true;
+    const retrieveOnly = document.getElementById("pg-retrieve-only").checked;
     const jobs = [["a", "pg-config-a", "pg-out-a"], ["b", "pg-config-b", "pg-out-b"]].map(
       async ([_, cfgId, outId]) => {
         const out = document.getElementById(outId);
         out.innerHTML = '<p class="muted">运行中…</p>';
         try {
-          const resp = await fetch("/ask", {
+          const resp = await fetch(retrieveOnly ? "/retrieve" : "/ask", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ question: q, config: readConfig(document.getElementById(cfgId)) }),
           });
           const data = await resp.json();
           out.innerHTML = "";
-          out.appendChild(resultCard(data));
+          out.appendChild(resultCard(data, { retrieveOnly }));
         } catch (e) {
           out.innerHTML = `<p class="muted">失败：${esc(e.message)}</p>`;
         }

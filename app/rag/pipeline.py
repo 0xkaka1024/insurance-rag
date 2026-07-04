@@ -184,6 +184,14 @@ class RagPipeline:
             citations=citations,
         )
 
+    def retrieve_only(self, question: str, config: RagConfig | None = None) -> AskResult:
+        """Playground 只检索模式：路由/检索/重排/阈值照常走，不调 LLM 生成。
+
+        answer 仅在拒答时携带话术，正常路径为空串；调试检索时零生成成本。
+        """
+        p = self._prepare(question, config)
+        return self._finish(p, p.refusal_answer if p.refused else "", [])
+
     def ask(self, question: str, config: RagConfig | None = None) -> AskResult:
         p = self._prepare(question, config)
         if p.refused:

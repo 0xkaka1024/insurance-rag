@@ -106,7 +106,7 @@
 ### G4 Playground 增强（实验平台体验，详见 REVIEW 第"Playground 优化方案"节）
 
 - [x] 检索透明化：RetrievedChunk 携带各路 rank/score（vector/BM25/粗排/rerank），前端逐 chunk 展示与位次变化
-- [ ] 只检索模式：/retrieve 端点不调 LLM，Playground 加开关（调优迭代亚秒级、零生成成本）
+- [x] 只检索模式：/retrieve 端点不调 LLM，Playground 加开关（调优迭代亚秒级、零生成成本）
 - [ ] chunk 浏览器 + ingest 静态报告：页级解析质量、切片边界叠加视图（双策略并排）、条号主轨覆盖率指标
 - [ ] 参数进 Playground config：top_k/recall_k/refuse_threshold/RRF k（生产端点锁定）；延迟瀑布 + token 成本展示
 - [ ] 案例保存：对比结果一键存档 → gen_eval_candidates 导入通道；评测表下钻回放
